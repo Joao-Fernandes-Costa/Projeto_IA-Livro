@@ -6,7 +6,8 @@ import {
   AnalyzePageResult,
 } from "@/types/ai";
 import { checkVisionSupport, checkStructuredOutputSupport, validateBaseUrl } from "./provider";
-import { MULTIMODAL_PAGE_READING_PROMPT, parseAndValidatePageAnalysis } from "./schema";
+import { MULTIMODAL_PAGE_READING_PROMPT } from "./schema";
+import { parseOpenAICompatibleResponse } from "./response-parser";
 
 export class OpenAIProvider implements AIProvider {
   public readonly name: AIProviderName = "openai";
@@ -150,6 +151,7 @@ export class OpenAIProvider implements AIProvider {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45000);
 
+    const startTime = Date.now();
     try {
       const res = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
@@ -178,46 +180,19 @@ export class OpenAIProvider implements AIProvider {
           ],
           response_format: { type: "json_object" },
           temperature: 0.1,
+          stream: false,
         }),
         signal: controller.signal,
       });
 
       clearTimeout(timeout);
 
-      if (!res.ok) {
-        const errorJson = await res.json().catch(() => ({}));
-        const errMessage = errorJson?.error?.message || res.statusText;
-
-        if (
-          res.status === 400 &&
-          (errMessage.toLowerCase().includes("image_url is not supported") ||
-            errMessage.toLowerCase().includes("vision") ||
-            errMessage.toLowerCase().includes("multimodal"))
-        ) {
-          const err = new Error("O modelo selecionado não possui suporte para leitura de imagens.");
-          (err as unknown as { code: string }).code = "VISION_NOT_SUPPORTED";
-          throw err;
-        }
-
-        if (res.status === 401) {
-          const err = new Error("Chave de API da OpenAI inválida.");
-          (err as unknown as { code: string }).code = "API_KEY_INVALID";
-          throw err;
-        }
-
-        if (res.status === 429) {
-          const err = new Error("Limite de requisições excedido ou cota esgotada na OpenAI.");
-          (err as unknown as { code: string }).code = "RATE_LIMIT_EXCEEDED";
-          throw err;
-        }
-
-        throw new Error(`OpenAI retornou erro HTTP ${res.status}: ${errMessage}`);
-      }
-
-      const json = await res.json();
-      const content = json.choices?.[0]?.message?.content || "";
-
-      return parseAndValidatePageAnalysis(content, input.pageNumber);
+      return await parseOpenAICompatibleResponse(res, {
+        provider: "OpenAI",
+        model: this.model,
+        pageNumber: input.pageNumber,
+        startTime,
+      });
     } catch (err: unknown) {
       clearTimeout(timeout);
       if (err instanceof Error && err.name === "AbortError") {

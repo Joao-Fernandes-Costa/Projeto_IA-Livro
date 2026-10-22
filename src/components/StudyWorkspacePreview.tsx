@@ -88,8 +88,44 @@ export function StudyWorkspacePreview({
   const pagesCount = pages.length;
   const displayTitle = studyTitle.trim() || "Material de Estudo Personalizado";
 
+  const totalPages = pagesCount;
+  const processedPages = analysis?.processedPages ?? (analysis?.pageAnalyses?.length || 0);
+  const failedPages = analysis?.failedPages ?? (totalPages - processedPages);
   const hasAnalysis = Boolean(analysis && analysis.pageAnalyses && analysis.pageAnalyses.length > 0);
   const confidencePercent = analysis ? Math.round(analysis.averageConfidence * 100) : 95;
+
+  // Status visual:
+  // - Se todas as páginas forem processadas: "Leitura concluída"
+  // - Se algumas falharem: "Leitura concluída com falhas"
+  // - Se todas falharem: "Falha na leitura"
+  let readingStatus: {
+    label: string;
+    badgeClass: string;
+    dotClass: string;
+  };
+
+  if (processedPages === totalPages && failedPages === 0) {
+    readingStatus = {
+      label: "Leitura concluída",
+      badgeClass:
+        "bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+      dotClass: "bg-emerald-500",
+    };
+  } else if (processedPages > 0) {
+    readingStatus = {
+      label: "Leitura concluída com falhas",
+      badgeClass:
+        "bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+      dotClass: "bg-amber-500",
+    };
+  } else {
+    readingStatus = {
+      label: "Falha na leitura",
+      badgeClass:
+        "bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800",
+      dotClass: "bg-rose-500",
+    };
+  }
 
   const handleCopyText = () => {
     if (analysis?.fullText) {
@@ -106,9 +142,11 @@ export function StudyWorkspacePreview({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Leitura Real Concluída</span>
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${readingStatus.badgeClass}`}
+              >
+                <span className={`w-2 h-2 rounded-full ${readingStatus.dotClass} animate-pulse`} />
+                <span>{readingStatus.label}</span>
               </span>
 
               {hasAnalysis && (
@@ -118,10 +156,10 @@ export function StudyWorkspacePreview({
                 </span>
               )}
 
-              {analysis?.failedPages && analysis.failedPages > 0 ? (
+              {failedPages > 0 ? (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>{analysis.failedPages} com falha</span>
+                  <span>{failedPages} com falha</span>
                 </span>
               ) : null}
             </div>
@@ -131,9 +169,9 @@ export function StudyWorkspacePreview({
             </h2>
 
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium">
-              {hasAnalysis
-                ? `${analysis?.processedPages} de ${pagesCount} páginas processadas e transcritas com sucesso.`
-                : `Material organizado com ${pagesCount} páginas.`}
+              {processedPages === 0
+                ? "Nenhuma página pôde ser transcrita com sucesso. Revise os erros abaixo ou tente outro modelo."
+                : `${processedPages} de ${totalPages} páginas processadas e transcritas com sucesso.`}
             </p>
           </div>
 
