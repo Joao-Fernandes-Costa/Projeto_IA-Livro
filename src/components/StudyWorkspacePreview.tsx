@@ -551,13 +551,11 @@ export function StudyWorkspacePreview({
       ) : activeTab === "audiobook" && mediaData ? (
         <AudiobookPlayer
           media={mediaData}
-          studyTitle={displayTitle}
           onBackToStudy={() => setActiveTab("text")}
         />
       ) : activeTab === "video" && mediaData ? (
         <ExplanatoryVideoPlayer
           media={mediaData}
-          studyTitle={displayTitle}
           pages={pages}
           onBackToStudy={() => setActiveTab("text")}
         />
