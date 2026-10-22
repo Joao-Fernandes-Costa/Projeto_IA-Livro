@@ -11,3 +11,5 @@ export * from "./HomeFooter";
 export * from "./ErrorMessage";
 export * from "./ThemeProvider";
 export * from "./ThemeToggle";
+export * from "./StudyProcessingView";
+export * from "./StudyWorkspacePreview";

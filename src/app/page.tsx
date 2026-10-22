@@ -9,6 +9,8 @@ import {
   PagePreviewModal,
   HomeFooter,
   ErrorMessage,
+  StudyProcessingView,
+  StudyWorkspacePreview,
 } from "@/components";
 import { useStudyPages } from "@/lib/hooks/useStudyPages";
 import type { StudyPage, BookPageImage } from "@/types";
@@ -17,6 +19,7 @@ export type { StudyPage, BookPageImage };
 
 export default function HomePage() {
   const {
+    viewMode,
     studyTitle,
     setStudyTitle,
     pages,
@@ -31,6 +34,8 @@ export default function HomePage() {
     processingStep,
     createdStudyId,
     startStudy,
+    handleProcessingComplete,
+    handleBackToPages,
     resetStudy,
     applySuggestion,
     fileInputRef,
@@ -66,68 +71,96 @@ export default function HomePage() {
         }}
       />
 
-      {/* 2. Área Principal Centralizada Verticalmente */}
+      {/* 2. Área Principal com Transição de Estados */}
       <main className="flex-1 flex flex-col justify-center items-center w-full px-3 sm:px-6 py-6 sm:py-12">
-        <div className="w-full max-w-[760px] mx-auto space-y-5 sm:space-y-6">
-          {/* Apresentação / Empty State (Apenas quando não houver páginas ou no início) */}
-          {pages.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div className="text-center space-y-1.5 pb-1">
-              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                Lote de estudo em preparação
-              </span>
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-                Revise as páginas do seu material
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 font-medium">
-                {pages.length}{" "}
-                {pages.length === 1
-                  ? "página adicionada"
-                  : "páginas adicionadas"}
-                . Organize a sequência antes de começar.
-              </p>
-            </div>
-          )}
-
-          {/* Mensagem de Erro com validações visíveis */}
+        <div
+          className={`w-full mx-auto space-y-5 sm:space-y-6 transition-all duration-300 ${
+            viewMode === "workspace_preview" ? "max-w-[880px]" : "max-w-[760px]"
+          }`}
+        >
+          {/* Mensagem de Erro global com validações visíveis */}
           <ErrorMessage
             message={errorMessage}
             onDismiss={() => setErrorMessage(null)}
           />
 
-          {/* Caixa de Composição Principal (Estilo Prompt / Chat central) */}
-          <StudyComposer
-            studyTitle={studyTitle}
-            onTitleChange={setStudyTitle}
-            pages={pages}
-            isDraggingOver={isDraggingOver}
-            isProcessing={isProcessing}
-            processingStep={processingStep}
-            isSubmitted={isSubmitted}
-            createdStudyId={createdStudyId}
-            draggedIndex={draggedIndex}
-            fileInputRef={fileInputRef}
-            cameraInputRef={cameraInputRef}
-            onFilesSelected={addFiles}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onMovePage={movePage}
-            onRotatePage={rotatePage}
-            onRemovePage={removePage}
-            onZoomPage={(page) => setActiveZoomPage(page)}
-            onCardDragStart={handleCardDragStart}
-            onCardDragOver={handleCardDragOver}
-            onCardDragEnd={handleCardDragEnd}
-            onClearAll={clearAllPages}
-            onStartStudy={startStudy}
-            onResetStudy={resetStudy}
-          />
+          {/* ESTADO 1: Composição e Revisão de Páginas */}
+          {viewMode === "composer" && (
+            <>
+              {/* Apresentação / Empty State (Apenas quando não houver páginas ou no início) */}
+              {pages.length === 0 ? (
+                <EmptyState />
+              ) : (
+                <div className="text-center space-y-1.5 pb-1">
+                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    Lote de estudo em preparação
+                  </span>
+                  <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+                    Revise as páginas do seu material
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 font-medium">
+                    {pages.length}{" "}
+                    {pages.length === 1
+                      ? "página adicionada"
+                      : "páginas adicionadas"}
+                    . Organize a sequência antes de começar.
+                  </p>
+                </div>
+              )}
 
-          {/* Sugestões Rápidas (Abaixo do campo quando vazio) */}
-          {pages.length === 0 && (
-            <QuickSuggestions onSelectSuggestion={applySuggestion} />
+              {/* Caixa de Composição Principal */}
+              <StudyComposer
+                studyTitle={studyTitle}
+                onTitleChange={setStudyTitle}
+                pages={pages}
+                isDraggingOver={isDraggingOver}
+                isProcessing={isProcessing}
+                processingStep={processingStep}
+                isSubmitted={isSubmitted}
+                createdStudyId={createdStudyId}
+                draggedIndex={draggedIndex}
+                fileInputRef={fileInputRef}
+                cameraInputRef={cameraInputRef}
+                onFilesSelected={addFiles}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onMovePage={movePage}
+                onRotatePage={rotatePage}
+                onRemovePage={removePage}
+                onZoomPage={(page) => setActiveZoomPage(page)}
+                onCardDragStart={handleCardDragStart}
+                onCardDragOver={handleCardDragOver}
+                onCardDragEnd={handleCardDragEnd}
+                onClearAll={clearAllPages}
+                onStartStudy={startStudy}
+                onResetStudy={resetStudy}
+              />
+
+              {/* Sugestões Rápidas (Abaixo do campo quando vazio) */}
+              {pages.length === 0 && (
+                <QuickSuggestions onSelectSuggestion={applySuggestion} />
+              )}
+            </>
+          )}
+
+          {/* ESTADO 2: Processamento Simulado em 4 Etapas */}
+          {viewMode === "processing" && (
+            <StudyProcessingView
+              pagesCount={pages.length}
+              studyTitle={studyTitle}
+              onComplete={handleProcessingComplete}
+              onCancel={handleBackToPages}
+            />
+          )}
+
+          {/* ESTADO 3: Prévia do Ambiente de Estudo (Workspace) */}
+          {viewMode === "workspace_preview" && (
+            <StudyWorkspacePreview
+              pages={pages}
+              studyTitle={studyTitle}
+              onBackToPages={handleBackToPages}
+            />
           )}
         </div>
       </main>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { StudyPage } from "@/types/study";
+import { StudyPage, HomeViewMode } from "@/types/study";
 import {
   MAX_PAGES_PER_STUDY,
   MAX_FILE_SIZE_BYTES,
@@ -10,6 +10,7 @@ import {
 import { calculateStudyMetrics } from "@/lib/utils";
 
 export function useStudyPages() {
+  const [viewMode, setViewMode] = useState<HomeViewMode>("composer");
   const [studyTitle, setStudyTitle] = useState("");
   const [pages, setPages] = useState<StudyPage[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -163,6 +164,7 @@ export function useStudyPages() {
     setIsProcessing(false);
     setCreatedStudyId(null);
     setErrorMessage(null);
+    setViewMode("composer");
   };
 
   const rotatePage = (id: string) => {
@@ -224,8 +226,8 @@ export function useStudyPages() {
     setStudyTitle(suggestion);
   };
 
-  // Processamento simulado sem IA real nesta etapa
-  const startStudy = async () => {
+  // Iniciar fluxo de preparação do material com simulação progressiva (sem IA real nesta etapa)
+  const startStudy = () => {
     if (pages.length === 0) {
       setErrorMessage("Adicione pelo menos uma página para iniciar o estudo.");
       return;
@@ -234,29 +236,35 @@ export function useStudyPages() {
     setErrorMessage(null);
     setIsProcessing(true);
     setProcessingStep("Preparando o material de estudo...");
+    setViewMode("processing");
+  };
 
-    try {
-      await new Promise((r) => setTimeout(r, 1000));
-      const newId = `estudo-${Date.now().toString(36)}`;
-      setCreatedStudyId(newId);
-      setIsSubmitted(true);
-    } catch {
-      setErrorMessage("Ocorreu um erro ao preparar seu estudo. Tente novamente.");
-    } finally {
-      setIsProcessing(false);
-    }
+  const handleProcessingComplete = () => {
+    const newId = `estudo-${Date.now().toString(36)}`;
+    setCreatedStudyId(newId);
+    setIsProcessing(false);
+    setIsSubmitted(true);
+    setViewMode("workspace_preview");
+  };
+
+  const handleBackToPages = () => {
+    setIsProcessing(false);
+    setViewMode("composer");
   };
 
   const resetStudy = () => {
     setIsSubmitted(false);
     setIsProcessing(false);
     setCreatedStudyId(null);
+    setViewMode("composer");
   };
 
   const totalSizeBytes = pages.reduce((acc, p) => acc + p.sizeBytes, 0);
   const metrics = calculateStudyMetrics(pages.length, totalSizeBytes);
 
   return {
+    viewMode,
+    setViewMode,
     studyTitle,
     setStudyTitle,
     pages,
@@ -272,6 +280,8 @@ export function useStudyPages() {
     processingStep,
     createdStudyId,
     startStudy,
+    handleProcessingComplete,
+    handleBackToPages,
     resetStudy,
     applySuggestion,
     fileInputRef,

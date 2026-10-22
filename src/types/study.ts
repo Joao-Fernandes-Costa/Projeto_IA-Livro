@@ -78,3 +78,16 @@ export interface StudySession {
   createdAt: number;
   updatedAt: number;
 }
+
+export type HomeViewMode = "composer" | "processing" | "workspace_preview";
+
+export type PreparationStepState = "waiting" | "in_progress" | "completed";
+
+export interface PreparationStep {
+  id: string;
+  title: string;
+  inProgressMessage: string;
+  completedMessage: string;
+  startProgress: number;
+  endProgress: number;
+}

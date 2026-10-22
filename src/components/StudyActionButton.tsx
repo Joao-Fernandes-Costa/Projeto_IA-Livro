@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import { ArrowRight, Sparkles, Loader2 } from "lucide-react";
 
 interface StudyActionButtonProps {
@@ -15,26 +14,9 @@ interface StudyActionButtonProps {
 export function StudyActionButton({
   hasPages,
   isProcessing,
-  isSubmitted,
-  createdStudyId,
   onStartStudy,
 }: StudyActionButtonProps) {
   const isEnabled = hasPages && !isProcessing;
-
-  // Se já foi preparado com sucesso, o único botão principal "Começar estudo" direciona ao ambiente
-  if (isSubmitted && isEnabled) {
-    return (
-      <Link
-        href={`/estudo/${createdStudyId || "novo"}`}
-        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all shadow-sm bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white shadow-indigo-600/25 hover:shadow-md cursor-pointer active:scale-98"
-        title="Começar estudo"
-      >
-        <Sparkles className="w-4 h-4" />
-        <span>Começar estudo</span>
-        <ArrowRight className="w-3.5 h-3.5" />
-      </Link>
-    );
-  }
 
   return (
     <button
