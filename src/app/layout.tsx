@@ -3,7 +3,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "EstudaIA — Seu companheiro inteligente de estudos",
+  title: "EstudeAI — Seu companheiro inteligente de estudos",
   description:
     "Envie fotos das páginas do seu livro para gerar explicações, áudios e quizzes de estudo personalizados com IA.",
 };
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 const themeInitScript = `
   (function() {
     try {
-      var saved = localStorage.getItem('estudaia-theme');
+      var saved = localStorage.getItem('estudeai-theme') || localStorage.getItem('estudaia-theme');
       var isDark = false;
       if (saved === 'dark') {
         isDark = true;

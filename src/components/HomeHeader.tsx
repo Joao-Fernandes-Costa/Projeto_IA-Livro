@@ -22,7 +22,7 @@ export function HomeHeader({ onOpenMyStudies, onOpenHelp }: HomeHeaderProps) {
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white">
-                EstudaIA
+                EstudeAI
               </span>
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
                 <Sparkles className="w-2.5 h-2.5" />
@@ -65,7 +65,7 @@ export function HomeHeader({ onOpenMyStudies, onOpenHelp }: HomeHeaderProps) {
             onClick={onOpenHelp}
             className="p-1.5 sm:p-2 rounded-xl text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition cursor-pointer"
             aria-label="Ajuda e orientações"
-            title="Como funciona o EstudaIA"
+            title="Como funciona o EstudeAI"
           >
             <HelpCircle className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
           </button>

@@ -171,7 +171,7 @@ export default function AdminAISettingsPage() {
                 Painel Administrativo de IA
               </h1>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-                Informe a senha mestre para gerenciar chaves e credenciais seguras do EstudaIA.
+                Informe a senha mestre para gerenciar chaves e credenciais seguras do EstudeAI.
               </p>
             </div>
 

@@ -121,4 +121,9 @@ Os elementos discutidos preparam a base para o aprofundamento das próximas etap
       processedAt: new Date().toISOString(),
     };
   }
+
+  public async generateQuiz(studyAnalysis: import("./schema").StudyAnalysis): Promise<import("../quiz/schema").QuizGenerationServer> {
+    const { generateMockQuizFromStudy } = await import("../quiz/quiz-generator");
+    return generateMockQuizFromStudy(studyAnalysis);
+  }
 }

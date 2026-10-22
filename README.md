@@ -1,6 +1,6 @@
-# 📚 EstudaIA — Leitor Inteligente de Livros com IA
+# 📚 EstudeAI — Leitor Inteligente de Livros com IA
 
-O **EstudaIA** é uma plataforma de estudos assistida por Inteligência Artificial projetada para transformar páginas físicas de livros em uma experiência de aprendizado completa e interativa.
+O **EstudeAI** é uma plataforma de estudos assistida por Inteligência Artificial projetada para transformar páginas físicas de livros em uma experiência de aprendizado completa e interativa.
 
 O objetivo do projeto é permitir que o estudante fotografe ou envie imagens das páginas de um livro que deseja estudar e, a partir desse conteúdo:
 1. **Leitura Multimodal (Visão + OCR Inteligente):** A IA lê e interpreta as páginas fotografadas (textos, tabelas, gráficos e fórmulas).

@@ -1,5 +1,6 @@
 import { AIStudyResult } from "./study";
 import type { PageAnalysis, PageSection, PageProcessingError, StudyAnalysis } from "@/lib/ai/schema";
+import type { QuizGenerationServer } from "@/lib/quiz/schema";
 
 export type { PageAnalysis, PageSection, PageProcessingError, StudyAnalysis };
 
@@ -36,6 +37,7 @@ export interface AIProvider {
   checkHealth(): Promise<AIHealthResult>;
   analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult>;
   analyzePages?(request: AIAnalysisRequest): Promise<AIStudyResult>;
+  generateQuiz?(studyAnalysis: StudyAnalysis): Promise<QuizGenerationServer>;
 }
 
 export interface AIConfiguration {

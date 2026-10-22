@@ -8,7 +8,7 @@ import { checkVisionSupport, checkStructuredOutputSupport } from "./provider";
 import { SecretStore } from "@/lib/security/secret-store";
 
 /**
- * Armazenamento server-side das configurações de IA do EstudaIA.
+ * Armazenamento server-side das configurações de IA do EstudeAI.
  * Inicializa com as variáveis de ambiente (.env) como valores padrão seguros.
  * NUNCA expõe as chaves de API para o frontend.
  */

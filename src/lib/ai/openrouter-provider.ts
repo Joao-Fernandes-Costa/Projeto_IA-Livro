@@ -86,8 +86,8 @@ export class OpenRouterAIProvider implements AIProvider {
         method: "GET",
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
-          "HTTP-Referer": "https://estudaia.local",
-          "X-Title": "EstudaIA",
+          "HTTP-Referer": "https://estudeai.local",
+          "X-Title": "EstudeAI",
         },
         signal: controller.signal,
       });
@@ -194,8 +194,8 @@ export class OpenRouterAIProvider implements AIProvider {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
-          "HTTP-Referer": "https://estudaia.local",
-          "X-Title": "EstudaIA",
+          "HTTP-Referer": "https://estudeai.local",
+          "X-Title": "EstudeAI",
         },
         body: JSON.stringify({
           model: this.model,

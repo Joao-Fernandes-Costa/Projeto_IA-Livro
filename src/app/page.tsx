@@ -67,7 +67,7 @@ export default function HomePage() {
         }}
         onOpenHelp={() => {
           alert(
-            "Como funciona o EstudaIA:\n\n1. Envie ou fotografe as páginas do seu livro físico (até 30 páginas).\n2. Organize a sequência das fotos e gire se necessário.\n3. O EstudaIA lerá os textos e gerará resumo, aula didática e quiz prático!"
+            "Como funciona o EstudeAI:\n\n1. Envie ou fotografe as páginas do seu livro físico (até 30 páginas).\n2. Organize a sequência das fotos e gire se necessário.\n3. O EstudeAI lerá os textos e gerará resumo, aula didática e quiz prático!"
           );
         }}
       />

@@ -24,7 +24,7 @@ export default async function EstudoPage({ params }: EstudoPageProps) {
           <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
             <BookOpen className="w-4 h-4" />
           </div>
-          <span className="font-bold text-slate-900 dark:text-white text-sm">EstudaIA</span>
+          <span className="font-bold text-slate-900 dark:text-white text-sm">EstudeAI</span>
         </div>
       </header>
 

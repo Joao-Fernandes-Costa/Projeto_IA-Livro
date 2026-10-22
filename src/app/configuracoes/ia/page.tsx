@@ -6,8 +6,8 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { HomeFooter } from "@/components/HomeFooter";
 
 export const metadata = {
-  title: "Configurações de IA — EstudaIA",
-  description: "Gerencie provedores de inteligência artificial (Ollama, OpenRouter, OpenAI, Gemini e Customizados) no EstudaIA.",
+  title: "Configurações de IA — EstudeAI",
+  description: "Gerencie provedores de inteligência artificial (Ollama, OpenRouter, OpenAI, Gemini e Customizados) no EstudeAI.",
 };
 
 export default function AISettingsPage() {

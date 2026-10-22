@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 
-export const ADMIN_COOKIE_NAME = "estudaia_admin_session";
+export const ADMIN_COOKIE_NAME = "estudeai_admin_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 12; // 12 horas
 
 interface SessionPayload {
@@ -170,7 +170,7 @@ export function verifyAdminPassword(password: string): boolean {
  */
 export async function requireAdminSession(): Promise<boolean> {
   const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get(ADMIN_COOKIE_NAME);
+  const sessionCookie = cookieStore.get(ADMIN_COOKIE_NAME) || cookieStore.get("estudaia_admin_session");
   return verifySessionToken(sessionCookie?.value);
 }
 

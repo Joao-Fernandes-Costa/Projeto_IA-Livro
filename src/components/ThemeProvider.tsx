@@ -17,7 +17,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // 1. Usar preferência salva se existir
-    const saved = localStorage.getItem("estudaia-theme");
+    const saved = localStorage.getItem("estudeai-theme") || localStorage.getItem("estudaia-theme");
     let initialTheme: Theme = "light";
 
     if (saved === "dark" || saved === "light") {
@@ -42,7 +42,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Ouvir alterações do sistema caso o usuário não tenha definido no localStorage
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleSystemChange = (e: MediaQueryListEvent) => {
-      const currentSaved = localStorage.getItem("estudaia-theme");
+      const currentSaved = localStorage.getItem("estudeai-theme") || localStorage.getItem("estudaia-theme");
       if (!currentSaved) {
         const next = e.matches ? "dark" : "light";
         setThemeState(next);
@@ -61,7 +61,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
     try {
-      localStorage.setItem("estudaia-theme", newTheme);
+      localStorage.setItem("estudeai-theme", newTheme);
     } catch {}
 
     if (newTheme === "dark") {

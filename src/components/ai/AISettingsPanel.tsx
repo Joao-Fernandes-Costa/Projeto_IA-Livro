@@ -70,7 +70,7 @@ export function AISettingsPanel() {
       setSelectedProvider(providerId);
       setStatusMessage({
         type: "success",
-        text: `Provedor ${data.data.providers[providerId]?.name || providerId} definido como ativo no EstudaIA!`,
+        text: `Provedor ${data.data.providers[providerId]?.name || providerId} definido como ativo no EstudeAI!`,
       });
       setTimeout(() => setStatusMessage(null), 4000);
     } catch {

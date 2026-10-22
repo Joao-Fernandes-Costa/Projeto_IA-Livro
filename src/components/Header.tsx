@@ -14,7 +14,7 @@ export function Header() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-bold text-lg tracking-tight text-white">
-                EstudaIA
+                EstudeAI
               </h1>
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
                 Protótipo • Etapa 1

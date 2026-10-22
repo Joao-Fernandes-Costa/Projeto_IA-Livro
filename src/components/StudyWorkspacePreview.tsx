@@ -20,10 +20,14 @@ import {
   Copy,
   Check,
   Eye,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import type { StudyPage } from "@/types/study";
 import type { StudyAnalysis } from "@/lib/ai/schema";
 import { formatFileSize } from "@/lib/utils";
+import { QuizPublic } from "@/lib/quiz/schema";
+import { QuizGame } from "./QuizGame";
 
 interface StudyWorkspacePreviewProps {
   pages: StudyPage[];
@@ -40,7 +44,7 @@ interface WorkspaceCardItem {
   features: string[];
 }
 
-const FUTURE_WORKSPACE_CARDS: WorkspaceCardItem[] = [
+const LOCKED_MODULES: WorkspaceCardItem[] = [
   {
     id: "lecture",
     title: "Aula explicativa",
@@ -65,14 +69,6 @@ const FUTURE_WORKSPACE_CARDS: WorkspaceCardItem[] = [
       "Explicação guiada em áudio para ouvir no seu ritmo enquanto revisa ou realiza outras atividades.",
     features: ["Narração natural", "Controle de velocidade", "Capítulos de áudio"],
   },
-  {
-    id: "quiz",
-    title: "Quiz interativo",
-    icon: CheckSquare,
-    description:
-      "Questões de múltipla escolha com gabarito e justificativa para fixação e validação do aprendizado.",
-    features: ["Perguntas contextualizadas", "Gabarito comentado", "Feedback imediato"],
-  },
 ];
 
 export function StudyWorkspacePreview({
@@ -85,6 +81,12 @@ export function StudyWorkspacePreview({
   const [showFullText, setShowFullText] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Estados do Questionário Interativo
+  const [quizData, setQuizData] = useState<QuizPublic | null>(null);
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+  const [quizError, setQuizError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"text" | "quiz">("text");
+
   const pagesCount = pages.length;
   const displayTitle = studyTitle.trim() || "Material de Estudo Personalizado";
 
@@ -94,10 +96,6 @@ export function StudyWorkspacePreview({
   const hasAnalysis = Boolean(analysis && analysis.pageAnalyses && analysis.pageAnalyses.length > 0);
   const confidencePercent = analysis ? Math.round(analysis.averageConfidence * 100) : 95;
 
-  // Status visual:
-  // - Se todas as páginas forem processadas: "Leitura concluída"
-  // - Se algumas falharem: "Leitura concluída com falhas"
-  // - Se todas falharem: "Falha na leitura"
   let readingStatus: {
     label: string;
     badgeClass: string;
@@ -132,6 +130,33 @@ export function StudyWorkspacePreview({
       navigator.clipboard.writeText(analysis.fullText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleGenerateQuiz = async () => {
+    if (!analysis) return;
+    setIsGeneratingQuiz(true);
+    setQuizError(null);
+
+    try {
+      const res = await fetch("/api/ai/generate-quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studyAnalysis: analysis }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Falha ao gerar o questionário interativo.");
+      }
+
+      setQuizData(data.quiz);
+      setActiveTab("quiz");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro inesperado ao gerar o questionário.";
+      setQuizError(msg);
+    } finally {
+      setIsGeneratingQuiz(false);
     }
   };
 
@@ -175,15 +200,52 @@ export function StudyWorkspacePreview({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onBackToPages}
-            className="self-start sm:self-center inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition cursor-pointer active:scale-98"
-            title="Voltar e revisar as páginas originais"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Voltar às páginas</span>
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-center flex-wrap">
+            {/* CTA no Header para geração ou acesso direto ao questionário */}
+            {hasAnalysis && !quizData && (
+              <button
+                type="button"
+                onClick={handleGenerateQuiz}
+                disabled={isGeneratingQuiz}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition active:scale-98 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isGeneratingQuiz ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Gerando questionário...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Gerar questionário</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {quizData && (
+              <button
+                type="button"
+                onClick={() => setActiveTab(activeTab === "quiz" ? "text" : "quiz")}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition active:scale-98 cursor-pointer"
+              >
+                <CheckSquare className="w-4 h-4" />
+                <span>
+                  {activeTab === "quiz" ? "Ver texto e resumo" : `Ver quiz (${quizData.totalQuestions} questões)`}
+                </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onBackToPages}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition cursor-pointer active:scale-98"
+              title="Voltar e revisar as páginas originais"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Voltar às páginas</span>
+            </button>
+          </div>
         </div>
 
         {/* Resumo das Miniaturas */}
@@ -230,207 +292,346 @@ export function StudyWorkspacePreview({
         </div>
       </div>
 
-      {/* 2. Cartão Ativo: Texto e Resumo Processado com IA */}
-      <div className="rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-500/80 dark:border-indigo-500/60 p-5 sm:p-7 shadow-xl shadow-indigo-950/10 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/30 shrink-0">
-              <FileText className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                  Texto e Resumo das Páginas
-                </h3>
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span>Disponível</span>
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                Extração integral do texto do livro físico e síntese conceitual estruturada.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCopyText}
-              disabled={!analysis?.fullText}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition cursor-pointer"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Copiado!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copiar texto</span>
-                </>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowFullText((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition cursor-pointer active:scale-95"
-            >
-              <Eye className="w-3.5 h-3.5" />
-              <span>{showFullText ? "Recolher transcrição" : "Ver texto completo"}</span>
-            </button>
+      {/* Alerta de erro real na geração do questionário */}
+      {quizError && (
+        <div className="rounded-2xl p-4 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 text-xs sm:text-sm text-red-800 dark:text-red-300 flex items-start gap-3 shadow-sm animate-fadeIn">
+          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <strong className="font-bold">Não foi possível gerar o questionário interativo:</strong>
+            <p className="leading-relaxed">{quizError}</p>
           </div>
         </div>
+      )}
 
-        {/* Resumos por Página */}
-        {hasAnalysis && (
-          <div className="space-y-3 pt-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Síntese Didática por Página
-            </h4>
+      {/* 2. ABAS DE NAVEGAÇÃO: Exibidas exclusivamente após o questionário ser gerado */}
+      {quizData && (
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 animate-fadeIn">
+          <button
+            type="button"
+            onClick={() => setActiveTab("text")}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+              activeTab === "text"
+                ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-md"
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>Texto e resumo</span>
+          </button>
 
-            <div className="grid grid-cols-1 gap-2.5">
-              {analysis?.pageAnalyses.map((pageAnalysis) => (
-                <div
-                  key={pageAnalysis.pageNumber}
-                  className="rounded-2xl p-4 bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span>
-                        Página {pageAnalysis.pageNumber}
-                        {pageAnalysis.title ? ` — ${pageAnalysis.title}` : ""}
-                      </span>
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                      {Math.round(pageAnalysis.confidence * 100)}% confiança
+          <button
+            type="button"
+            onClick={() => setActiveTab("quiz")}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+              activeTab === "quiz"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+            }`}
+          >
+            <CheckSquare className="w-4 h-4" />
+            <span>Questionário ({quizData.totalQuestions} questões)</span>
+          </button>
+        </div>
+      )}
+
+      {/* 3. VISUALIZAÇÃO CONDICIONAL CONFORME A ABA ATIVA */}
+      {activeTab === "quiz" && quizData ? (
+        <QuizGame
+          quiz={quizData}
+          onBackToStudy={() => setActiveTab("text")}
+          onRegenerateQuiz={handleGenerateQuiz}
+        />
+      ) : (
+        <>
+          {/* Cartão Ativo: Texto e Resumo Processado com IA */}
+          <div className="rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-500/80 dark:border-indigo-500/60 p-5 sm:p-7 shadow-xl shadow-indigo-950/10 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/30 shrink-0">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                      Texto e Resumo das Páginas
+                    </h3>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Disponível</span>
                     </span>
                   </div>
-
-                  <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                    {pageAnalysis.summary}
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Extração integral do texto do livro físico e síntese conceitual estruturada.
                   </p>
-
-                  {pageAnalysis.importantConcepts.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {pageAnalysis.importantConcepts.map((concept, i) => (
-                        <span
-                          key={i}
-                          className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300"
-                        >
-                          {concept}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
-              ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyText}
+                  disabled={!analysis?.fullText}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copiar texto</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowFullText((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition cursor-pointer active:scale-95"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>{showFullText ? "Recolher transcrição" : "Ver texto completo"}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Resumos por Página */}
+            {hasAnalysis && (
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Síntese Didática por Página
+                </h4>
+
+                <div className="grid grid-cols-1 gap-2.5">
+                  {analysis?.pageAnalyses.map((pageAnalysis) => (
+                    <div
+                      key={pageAnalysis.pageNumber}
+                      className="rounded-2xl p-4 bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                          <BookOpen className="w-3.5 h-3.5" />
+                          <span>
+                            Página {pageAnalysis.pageNumber}
+                            {pageAnalysis.title ? ` — ${pageAnalysis.title}` : ""}
+                          </span>
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                          {Math.round(pageAnalysis.confidence * 100)}% confiança
+                        </span>
+                      </div>
+
+                      <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                        {pageAnalysis.summary}
+                      </p>
+
+                      {pageAnalysis.importantConcepts.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {pageAnalysis.importantConcepts.map((concept, i) => (
+                            <span
+                              key={i}
+                              className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300"
+                            >
+                              {concept}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Exibição Expandida do Texto Completo Transcrito */}
+            {showFullText && analysis?.fullText && (
+              <div className="rounded-2xl p-4 sm:p-5 bg-slate-900 text-slate-100 font-mono text-xs leading-relaxed space-y-3 overflow-x-auto max-h-[420px] overflow-y-auto animate-in fade-in duration-200 border border-slate-800">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2 text-slate-400">
+                  <span className="text-[11px] font-sans font-bold text-indigo-400">
+                    Transcrição Fiel do Livro
+                  </span>
+                  <span>{analysis.fullText.length} caracteres</span>
+                </div>
+                <pre className="whitespace-pre-wrap font-sans text-xs sm:text-sm text-slate-200">
+                  {analysis.fullText}
+                </pre>
+              </div>
+            )}
+
+            {/* Páginas que Falharam (se houver) */}
+            {analysis?.errors && analysis.errors.length > 0 && (
+              <div className="rounded-2xl p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 space-y-1.5">
+                <h5 className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Atenção nas seguintes páginas:</span>
+                </h5>
+                <ul className="text-xs text-amber-800 dark:text-amber-300 list-disc list-inside space-y-0.5">
+                  {analysis.errors.map((err, i) => (
+                    <li key={i}>
+                      Página {err.pageNumber}: {err.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Exibição Expandida do Texto Completo Transcrito */}
-        {showFullText && analysis?.fullText && (
-          <div className="rounded-2xl p-4 sm:p-5 bg-slate-900 text-slate-100 font-mono text-xs leading-relaxed space-y-3 overflow-x-auto max-h-[420px] overflow-y-auto animate-in fade-in duration-200 border border-slate-800">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2 text-slate-400">
-              <span className="text-[11px] font-sans font-bold text-indigo-400">
-                Transcrição Fiel do Livro
-              </span>
-              <span>{analysis.fullText.length} caracteres</span>
-            </div>
-            <pre className="whitespace-pre-wrap font-sans text-xs sm:text-sm text-slate-200">
-              {analysis.fullText}
-            </pre>
-          </div>
-        )}
+          {/* 4. Grid de Módulos (Quiz Ativo + Módulos Futuros) */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Módulos Educacionais
+            </h4>
 
-        {/* Páginas que Falharam (se houver) */}
-        {analysis?.errors && analysis.errors.length > 0 && (
-          <div className="rounded-2xl p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 space-y-1.5">
-            <h5 className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>Atenção nas seguintes páginas:</span>
-            </h5>
-            <ul className="text-xs text-amber-800 dark:text-amber-300 list-disc list-inside space-y-0.5">
-              {analysis.errors.map((err, i) => (
-                <li key={i}>
-                  Página {err.pageNumber}: {err.message}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      {/* 3. Grid dos 4 Recursos Futuros (Bloqueados) */}
-      <div className="space-y-3">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Próximos Módulos Educacionais
-        </h4>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {FUTURE_WORKSPACE_CARDS.map((card) => {
-            const Icon = card.icon;
-            return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Card do Quiz Interativo: Ativo com IA */}
               <div
-                key={card.id}
-                className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 flex flex-col justify-between shadow-sm opacity-85 hover:opacity-100 transition"
+                className={`rounded-3xl bg-white dark:bg-slate-900 border p-5 flex flex-col justify-between shadow-sm transition ${
+                  quizData
+                    ? "border-indigo-400 dark:border-indigo-700 ring-1 ring-indigo-400/30"
+                    : "border-slate-200 dark:border-slate-800"
+                }`}
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center shrink-0">
-                      <Icon className="w-5 h-5" aria-hidden="true" />
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200 dark:border-indigo-800">
+                      <CheckSquare className="w-5 h-5" aria-hidden="true" />
                     </div>
 
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                      <Lock className="w-2.5 h-2.5" aria-hidden="true" />
-                      <span>Disponível na próxima etapa</span>
+                    <span
+                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        quizData
+                          ? "bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                          : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800"
+                      }`}
+                    >
+                      <Sparkles className="w-2.5 h-2.5" aria-hidden="true" />
+                      <span>{quizData ? "Questionário Pronto" : "Disponível com IA"}</span>
                     </span>
                   </div>
 
                   <div>
                     <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                      {card.title}
+                      Quiz interativo
                     </h3>
                     <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mt-1">
-                      {card.description}
+                      Questões de múltipla escolha geradas pela IA a partir do conteúdo real das
+                      páginas, com gabarito seguro e justificativa didática.
                     </p>
                   </div>
 
                   <ul className="space-y-1 pt-1">
-                    {card.features.map((feat, i) => (
-                      <li
-                        key={i}
-                        className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5"
-                      >
-                        <span className="w-1 h-1 rounded-full bg-slate-400" />
-                        <span>{feat}</span>
-                      </li>
-                    ))}
+                    <li className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
+                      <span>5 a 10 questões exclusivas das páginas</span>
+                    </li>
+                    <li className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
+                      <span>Gabarito protegido no servidor</span>
+                    </li>
+                    <li className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
+                      <span>Avaliação instantânea com explicações</span>
+                    </li>
                   </ul>
                 </div>
 
                 <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800">
-                  <button
-                    type="button"
-                    disabled
-                    aria-disabled="true"
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800/70 text-slate-400 dark:text-slate-500 border border-slate-200/80 dark:border-slate-800 cursor-not-allowed select-none"
-                  >
-                    <Lock className="w-3 h-3" aria-hidden="true" />
-                    <span>Em breve com IA</span>
-                  </button>
+                  {quizData ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("quiz")}
+                      className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-98 cursor-pointer"
+                    >
+                      <CheckSquare className="w-4 h-4" />
+                      <span>Abrir questionário ({quizData.totalQuestions} questões)</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleGenerateQuiz}
+                      disabled={isGeneratingQuiz || !hasAnalysis}
+                      className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isGeneratingQuiz ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Gerando questionário...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>Gerar questionário interativo</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* 4. Barra de Ações Inferior */}
+              {/* Módulos Futuros Bloqueados */}
+              {LOCKED_MODULES.map((card) => {
+                const Icon = card.icon;
+                return (
+                  <div
+                    key={card.id}
+                    className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 flex flex-col justify-between shadow-sm opacity-85 hover:opacity-100 transition"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center shrink-0">
+                          <Icon className="w-5 h-5" aria-hidden="true" />
+                        </div>
+
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                          <Lock className="w-2.5 h-2.5" aria-hidden="true" />
+                          <span>Disponível na próxima etapa</span>
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                          {card.title}
+                        </h3>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mt-1">
+                          {card.description}
+                        </p>
+                      </div>
+
+                      <ul className="space-y-1 pt-1">
+                        {card.features.map((feat, i) => (
+                          <li
+                            key={i}
+                            className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5"
+                          >
+                            <span className="w-1 h-1 rounded-full bg-slate-400" />
+                            <span>{feat}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800">
+                      <button
+                        type="button"
+                        disabled
+                        aria-disabled="true"
+                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800/70 text-slate-400 dark:text-slate-500 border border-slate-200/80 dark:border-slate-800 cursor-not-allowed select-none"
+                      >
+                        <Lock className="w-3 h-3" aria-hidden="true" />
+                        <span>Em breve com IA</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 5. Barra de Ações Inferior */}
       <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-indigo-950/5 dark:shadow-black/40">
         <button
           type="button"
