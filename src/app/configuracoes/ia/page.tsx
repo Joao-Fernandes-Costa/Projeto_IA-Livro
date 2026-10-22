@@ -39,6 +39,14 @@ export default function AISettingsPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              href="/admin/configuracoes/ia"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition"
+              title="Painel Administrativo de Chaves"
+            >
+              <Shield className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Admin</span>
+            </Link>
             <ThemeToggle />
           </div>
         </div>

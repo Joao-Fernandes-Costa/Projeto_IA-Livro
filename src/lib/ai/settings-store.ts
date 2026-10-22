@@ -5,6 +5,7 @@ import {
   AIProviderDetailConfig,
 } from "@/types/ai";
 import { checkVisionSupport, checkStructuredOutputSupport } from "./provider";
+import { SecretStore } from "@/lib/security/secret-store";
 
 /**
  * Armazenamento server-side das configurações de IA do EstudaIA.
@@ -117,7 +118,10 @@ class AISettingsStoreClass {
       openrouter: {
         baseUrl: this.providers.openrouter.baseUrl,
         model: this.providers.openrouter.model,
-        apiKeyConfigured: Boolean(this.providers.openrouter.apiKey && this.providers.openrouter.apiKey.trim().length > 0),
+        apiKeyConfigured: Boolean(
+          (this.providers.openrouter.apiKey && this.providers.openrouter.apiKey.trim().length > 0) ||
+          SecretStore.getSecretSync("openrouter")?.apiKey
+        ),
         name: "OpenRouter",
         description: this.providers.openrouter.description,
         defaultModel: this.providers.openrouter.defaultModel,
@@ -194,9 +198,9 @@ class AISettingsStoreClass {
       for (const [key, conf] of Object.entries(update.providerConfigs)) {
         const provKey = key as AIProviderName;
         if (this.providers[provKey] && conf) {
-          if (conf.model) this.providers[provKey].model = conf.model.trim();
-          if (conf.baseUrl) this.providers[provKey].baseUrl = conf.baseUrl.trim();
-          if (conf.apiKey && conf.apiKey.trim()) this.providers[provKey].apiKey = conf.apiKey.trim();
+          if (conf.model !== undefined) this.providers[provKey].model = conf.model.trim();
+          if (conf.baseUrl !== undefined) this.providers[provKey].baseUrl = conf.baseUrl.trim();
+          if (conf.apiKey !== undefined) this.providers[provKey].apiKey = conf.apiKey.trim();
           if (provKey === "custom" && conf.name) {
             this.customProviderName = conf.name.trim();
             this.providers.custom.name = this.customProviderName;
@@ -218,6 +222,18 @@ class AISettingsStoreClass {
     customName?: string;
   } {
     const conf = this.providers[provider];
+
+    if (provider === "openrouter") {
+      const stored = SecretStore.getSecretSync("openrouter");
+      const apiKey = stored?.apiKey || process.env.OPENROUTER_API_KEY || undefined;
+      return {
+        apiKey: apiKey && apiKey.trim().length > 0 ? apiKey.trim() : undefined,
+        baseUrl: stored?.baseUrl || conf.baseUrl,
+        model: stored?.model || conf.model,
+        customName: undefined,
+      };
+    }
+
     return {
       apiKey: conf.apiKey,
       baseUrl: conf.baseUrl,

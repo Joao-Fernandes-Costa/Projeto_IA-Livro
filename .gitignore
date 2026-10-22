@@ -7,3 +7,7 @@ npm-debug.log*
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+
+# Armazenamento seguro de segredos e dados locais (nunca enviar ao git)
+.data/
+.ai-secrets/

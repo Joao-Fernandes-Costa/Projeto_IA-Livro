@@ -7,6 +7,7 @@ import {
 } from "@/types/ai";
 import { checkVisionSupport, checkStructuredOutputSupport, validateBaseUrl } from "./provider";
 import { MULTIMODAL_PAGE_READING_PROMPT, parseAndValidatePageAnalysis } from "./schema";
+import { SecretStore } from "@/lib/security/secret-store";
 
 export class OpenRouterAIProvider implements AIProvider {
   public readonly name: AIProviderName = "openrouter";
@@ -23,9 +24,33 @@ export class OpenRouterAIProvider implements AIProvider {
     this.baseUrl = validated.valid && validated.normalized ? validated.normalized : baseUrl;
     this.model = model.trim() || "google/gemini-flash-1.5";
     this.apiKey = apiKey?.trim();
+
+    // Se apiKey não foi passada explicitamente, busca no SecretStore criptografado
+    if (!this.apiKey) {
+      const stored = SecretStore.getSecretSync("openrouter");
+      if (stored) {
+        if (stored.apiKey) this.apiKey = stored.apiKey;
+        if (stored.model && (!model || model === "google/gemini-flash-1.5")) {
+          this.model = stored.model;
+        }
+        if (stored.baseUrl && (!baseUrl || baseUrl === "https://openrouter.ai/api/v1")) {
+          this.baseUrl = stored.baseUrl;
+        }
+      }
+    }
   }
 
   public async checkHealth(): Promise<AIHealthResult> {
+    // Atualiza com SecretStore caso a chave tenha sido gravada após inicialização
+    if (!this.apiKey) {
+      const stored = SecretStore.getSecretSync("openrouter");
+      if (stored?.apiKey) {
+        this.apiKey = stored.apiKey;
+        if (stored.model) this.model = stored.model;
+        if (stored.baseUrl) this.baseUrl = stored.baseUrl;
+      }
+    }
+
     const supportsVision = checkVisionSupport(this.model);
     const supportsStructuredOutput = checkStructuredOutputSupport("openrouter", this.model);
 
@@ -36,7 +61,7 @@ export class OpenRouterAIProvider implements AIProvider {
         model: this.model,
         supportsVision,
         supportsStructuredOutput,
-        message: "Chave de API do OpenRouter não configurada. Adicione OPENROUTER_API_KEY no .env ou no painel.",
+        message: "Chave de API do OpenRouter não configurada. Cadastre sua chave no painel administrativo (/admin/configuracoes/ia) ou defina OPENROUTER_API_KEY no ambiente.",
       };
     }
 
@@ -135,7 +160,16 @@ export class OpenRouterAIProvider implements AIProvider {
 
   public async analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult> {
     if (!this.apiKey) {
-      const err = new Error("Chave de API do OpenRouter não configurada.");
+      const stored = SecretStore.getSecretSync("openrouter");
+      if (stored?.apiKey) {
+        this.apiKey = stored.apiKey;
+        if (stored.model) this.model = stored.model;
+        if (stored.baseUrl) this.baseUrl = stored.baseUrl;
+      }
+    }
+
+    if (!this.apiKey) {
+      const err = new Error("Chave de API do OpenRouter não configurada. Configure no painel administrativo.");
       (err as unknown as { code: string }).code = "API_KEY_MISSING";
       throw err;
     }
