@@ -22,12 +22,14 @@ import {
   Eye,
   Loader2,
   AlertCircle,
+  Volume2,
 } from "lucide-react";
 import type { StudyPage } from "@/types/study";
 import type { StudyAnalysis } from "@/lib/ai/schema";
 import { formatFileSize } from "@/lib/utils";
 import { QuizPublic } from "@/lib/quiz/schema";
 import { QuizGame } from "./QuizGame";
+import { AudioExplanation } from "./AudioExplanation";
 
 interface StudyWorkspacePreviewProps {
   pages: StudyPage[];
@@ -61,14 +63,6 @@ const LOCKED_MODULES: WorkspaceCardItem[] = [
       "Apresentação visual com tópicos diretos, esquemas de ideias e cartões para memorização rápida.",
     features: ["Tópicos visuais", "Esquemas conceituais", "Modo apresentação"],
   },
-  {
-    id: "audio",
-    title: "Áudio explicativo",
-    icon: Headphones,
-    description:
-      "Explicação guiada em áudio para ouvir no seu ritmo enquanto revisa ou realiza outras atividades.",
-    features: ["Narração natural", "Controle de velocidade", "Capítulos de áudio"],
-  },
 ];
 
 export function StudyWorkspacePreview({
@@ -81,11 +75,22 @@ export function StudyWorkspacePreview({
   const [showFullText, setShowFullText] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Estados de Navegação por Abas
+  const [activeTab, setActiveTab] = useState<"text" | "audio" | "quiz">("text");
+
   // Estados do Questionário Interativo
   const [quizData, setQuizData] = useState<QuizPublic | null>(null);
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [quizError, setQuizError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"text" | "quiz">("text");
+
+  // Estados da Explicação em Áudio
+  const [audioData, setAudioData] = useState<{
+    script: string;
+    durationEstimate: number;
+    wordCount: number;
+  } | null>(null);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   const pagesCount = pages.length;
   const displayTitle = studyTitle.trim() || "Material de Estudo Personalizado";
@@ -160,6 +165,37 @@ export function StudyWorkspacePreview({
     }
   };
 
+  const handleGenerateAudio = async () => {
+    if (!analysis) return;
+    setIsGeneratingAudio(true);
+    setAudioError(null);
+
+    try {
+      const res = await fetch("/api/ai/generate-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studyAnalysis: analysis, mode: "browser" }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Falha ao gerar o roteiro de áudio explicativo.");
+      }
+
+      setAudioData({
+        script: data.script,
+        durationEstimate: data.durationEstimate,
+        wordCount: data.wordCount,
+      });
+      setActiveTab("audio");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro inesperado ao gerar a explicação em áudio.";
+      setAudioError(msg);
+    } finally {
+      setIsGeneratingAudio(false);
+    }
+  };
+
   return (
     <div className="w-full max-w-[880px] mx-auto space-y-6 animate-in fade-in duration-300">
       {/* 1. Cabeçalho do Ambiente de Estudo */}
@@ -201,7 +237,30 @@ export function StudyWorkspacePreview({
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-center flex-wrap">
-            {/* CTA no Header para geração ou acesso direto ao questionário */}
+            {/* CTA de Áudio no Header */}
+            {hasAnalysis && !audioData && (
+              <button
+                type="button"
+                onClick={handleGenerateAudio}
+                disabled={isGeneratingAudio}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition active:scale-98 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                title="Gerar narração didática do material"
+              >
+                {isGeneratingAudio ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                    <span>Gerando áudio...</span>
+                  </>
+                ) : (
+                  <>
+                    <Headphones className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Ouvir áudio</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* CTA de Quiz no Header */}
             {hasAnalysis && !quizData && (
               <button
                 type="button"
@@ -212,27 +271,14 @@ export function StudyWorkspacePreview({
                 {isGeneratingQuiz ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Gerando questionário...</span>
+                    <span>Gerando quiz...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Gerar questionário</span>
+                    <span>Gerar quiz</span>
                   </>
                 )}
-              </button>
-            )}
-
-            {quizData && (
-              <button
-                type="button"
-                onClick={() => setActiveTab(activeTab === "quiz" ? "text" : "quiz")}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition active:scale-98 cursor-pointer"
-              >
-                <CheckSquare className="w-4 h-4" />
-                <span>
-                  {activeTab === "quiz" ? "Ver texto e resumo" : `Ver quiz (${quizData.totalQuestions} questões)`}
-                </span>
               </button>
             )}
 
@@ -292,7 +338,18 @@ export function StudyWorkspacePreview({
         </div>
       </div>
 
-      {/* Alerta de erro real na geração do questionário */}
+      {/* Alerta de erro na geração do áudio */}
+      {audioError && (
+        <div className="rounded-2xl p-4 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 text-xs sm:text-sm text-red-800 dark:text-red-300 flex items-start gap-3 shadow-sm animate-fadeIn">
+          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <strong className="font-bold">Não foi possível gerar a explicação em áudio:</strong>
+            <p className="leading-relaxed">{audioError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Alerta de erro na geração do questionário */}
       {quizError && (
         <div className="rounded-2xl p-4 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 text-xs sm:text-sm text-red-800 dark:text-red-300 flex items-start gap-3 shadow-sm animate-fadeIn">
           <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
@@ -303,9 +360,9 @@ export function StudyWorkspacePreview({
         </div>
       )}
 
-      {/* 2. ABAS DE NAVEGAÇÃO: Exibidas exclusivamente após o questionário ser gerado */}
-      {quizData && (
-        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 animate-fadeIn">
+      {/* 2. ABAS DE NAVEGAÇÃO: Exibidas após o estudo ser processado com sucesso */}
+      {hasAnalysis && (
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 animate-fadeIn flex-wrap">
           <button
             type="button"
             onClick={() => setActiveTab("text")}
@@ -319,23 +376,94 @@ export function StudyWorkspacePreview({
             <span>Texto e resumo</span>
           </button>
 
+          {/* Aba Explicação em Áudio */}
           <button
             type="button"
-            onClick={() => setActiveTab("quiz")}
+            onClick={() => {
+              setActiveTab("audio");
+              if (!audioData && !isGeneratingAudio) {
+                handleGenerateAudio();
+              }
+            }}
             className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer ${
-              activeTab === "quiz"
+              activeTab === "audio"
                 ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
                 : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
             }`}
           >
-            <CheckSquare className="w-4 h-4" />
-            <span>Questionário ({quizData.totalQuestions} questões)</span>
+            <Headphones className="w-4 h-4" />
+            <span>
+              Explicação em áudio {audioData ? `(~${Math.ceil(audioData.durationEstimate / 60)} min)` : ""}
+            </span>
           </button>
+
+          {/* Aba Questionário (exibida quando o quiz foi gerado ou quando o usuário desejar gerar) */}
+          {quizData && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("quiz")}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+                activeTab === "quiz"
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                  : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+              }`}
+            >
+              <CheckSquare className="w-4 h-4" />
+              <span>Questionário ({quizData.totalQuestions} questões)</span>
+            </button>
+          )}
         </div>
       )}
 
       {/* 3. VISUALIZAÇÃO CONDICIONAL CONFORME A ABA ATIVA */}
-      {activeTab === "quiz" && quizData ? (
+      {activeTab === "audio" ? (
+        audioData ? (
+          <AudioExplanation
+            script={audioData.script}
+            durationEstimate={audioData.durationEstimate}
+            studyTitle={displayTitle}
+            onBackToStudy={() => setActiveTab("text")}
+            onRegenerateAudio={handleGenerateAudio}
+          />
+        ) : (
+          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 sm:p-12 text-center space-y-5 shadow-sm">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto border border-indigo-200 dark:border-indigo-800 shadow-sm">
+              <Headphones className="w-8 h-8" />
+            </div>
+
+            <div className="max-w-md mx-auto space-y-2">
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                Ouça uma explicação do seu material
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                Transforme o texto das páginas transcritas em um roteiro falado dinâmico de 3 a 5 minutos,
+                com sintetizador de voz natural em português brasileiro.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleGenerateAudio}
+                disabled={isGeneratingAudio}
+                className="inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/25 transition active:scale-98 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isGeneratingAudio ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Gerando roteiro de áudio com IA...</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-4 h-4" />
+                    <span>Gerar e ouvir explicação agora</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )
+      ) : activeTab === "quiz" && quizData ? (
         <QuizGame
           quiz={quizData}
           onBackToStudy={() => setActiveTab("text")}
@@ -478,14 +606,99 @@ export function StudyWorkspacePreview({
             )}
           </div>
 
-          {/* 4. Grid de Módulos (Quiz Ativo + Módulos Futuros) */}
+          {/* 4. Grid de Módulos (Áudio Ativo + Quiz Ativo + Módulos Futuros) */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Módulos Educacionais
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Card do Quiz Interativo: Ativo com IA */}
+              {/* Card 1: Explicação em Áudio (Ativo com IA) */}
+              <div
+                className={`rounded-3xl bg-white dark:bg-slate-900 border p-5 flex flex-col justify-between shadow-sm transition ${
+                  audioData
+                    ? "border-indigo-400 dark:border-indigo-700 ring-1 ring-indigo-400/30"
+                    : "border-slate-200 dark:border-slate-800"
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200 dark:border-indigo-800">
+                      <Headphones className="w-5 h-5" aria-hidden="true" />
+                    </div>
+
+                    <span
+                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        audioData
+                          ? "bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                          : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800"
+                      }`}
+                    >
+                      <Sparkles className="w-2.5 h-2.5" aria-hidden="true" />
+                      <span>{audioData ? "Áudio Pronto" : "Disponível com IA"}</span>
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Explicação em áudio
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mt-1">
+                      Narração guiada em áudio para ouvir no seu ritmo enquanto revisa, com roteiro
+                      estruturado de 3 a 5 minutos a partir do livro.
+                    </p>
+                  </div>
+
+                  <ul className="space-y-1 pt-1">
+                    <li className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
+                      <span>Roteiro didático completo e natural</span>
+                    </li>
+                    <li className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
+                      <span>Controle de velocidade (0.75x a 2x)</span>
+                    </li>
+                    <li className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
+                      <span>Síntese de voz em português brasileiro</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800">
+                  {audioData ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("audio")}
+                      className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-98 cursor-pointer"
+                    >
+                      <Headphones className="w-4 h-4" />
+                      <span>Ouvir explicação (~{Math.ceil(audioData.durationEstimate / 60)} min)</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleGenerateAudio}
+                      disabled={isGeneratingAudio || !hasAnalysis}
+                      className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isGeneratingAudio ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Gerando áudio...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="w-4 h-4" />
+                          <span>Gerar explicação em áudio</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 2: Quiz Interativo (Ativo com IA) */}
               <div
                 className={`rounded-3xl bg-white dark:bg-slate-900 border p-5 flex flex-col justify-between shadow-sm transition ${
                   quizData

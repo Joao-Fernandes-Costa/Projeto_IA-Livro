@@ -80,6 +80,7 @@ export interface AIProviderDetailConfig {
 
 export interface AISettingsResponse extends AIConfiguration {
   providers: Record<AIProviderName, AIProviderDetailConfig>;
+  tts?: import("@/lib/tts/tts-provider").TTSConfiguration;
 }
 
 export interface AISettingsUpdateRequest {
@@ -89,6 +90,7 @@ export interface AISettingsUpdateRequest {
   customProviderName?: string;
   apiKey?: string;
   providerConfigs?: Partial<Record<AIProviderName, Partial<AIProviderDetailConfig> & { apiKey?: string }>>;
+  tts?: Partial<import("@/lib/tts/tts-provider").TTSConfiguration> & { apiKey?: string };
 }
 
 export interface AITestRequest {

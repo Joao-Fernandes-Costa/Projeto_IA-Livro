@@ -6,6 +6,7 @@ import {
 } from "@/types/ai";
 import { checkVisionSupport, checkStructuredOutputSupport } from "./provider";
 import { SecretStore } from "@/lib/security/secret-store";
+import { TTSSettingsStore } from "@/lib/tts/tts-settings-store";
 
 /**
  * Armazenamento server-side das configurações de IA do EstudeAI.
@@ -164,6 +165,7 @@ class AISettingsStoreClass {
       isEnabled: true,
       customProviderName: this.customProviderName,
       providers: safeProviders,
+      tts: TTSSettingsStore.getConfiguration(),
     };
   }
 
@@ -207,6 +209,10 @@ class AISettingsStoreClass {
           }
         }
       }
+    }
+
+    if (update.tts) {
+      TTSSettingsStore.updateConfiguration(update.tts);
     }
 
     return this.getConfiguration();

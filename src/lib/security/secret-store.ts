@@ -159,6 +159,32 @@ export class SecretStore {
   }
 
   /**
+   * Salva a credencial criptografada de um provedor de forma síncrona.
+   */
+  public static saveSecretSync(
+    provider: string,
+    data: { apiKey: string; model?: string; baseUrl?: string }
+  ): void {
+    if (!this.isEncryptionConfigured()) {
+      return;
+    }
+
+    if (!data.apiKey || data.apiKey.trim().length === 0) {
+      return;
+    }
+
+    const secrets = readAllSecrets();
+    secrets[provider] = {
+      apiKey: data.apiKey.trim(),
+      model: data.model?.trim() || undefined,
+      baseUrl: data.baseUrl?.trim() || undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    writeAllSecrets(secrets);
+  }
+
+  /**
    * Salva a credencial criptografada de um provedor no armazenamento server-side seguro.
    */
   public static async saveSecret(
@@ -175,15 +201,7 @@ export class SecretStore {
       throw new Error("A chave de API não pode ser vazia.");
     }
 
-    const secrets = readAllSecrets();
-    secrets[provider] = {
-      apiKey: data.apiKey.trim(),
-      model: data.model?.trim() || undefined,
-      baseUrl: data.baseUrl?.trim() || undefined,
-      updatedAt: new Date().toISOString(),
-    };
-
-    writeAllSecrets(secrets);
+    this.saveSecretSync(provider, data);
   }
 
   /**

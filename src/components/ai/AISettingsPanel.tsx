@@ -18,6 +18,7 @@ import type {
 import { ModelStatus } from "./ModelStatus";
 import { ProviderCard } from "./ProviderCard";
 import { ProviderForm } from "./ProviderForm";
+import { AudioSettingsSection } from "./AudioSettingsSection";
 
 const PROVIDER_ORDER: AIProviderName[] = [
   "ollama",
@@ -307,6 +308,12 @@ export function AISettingsPanel() {
           onActivate={() => handleActivateProvider(selectedProvider)}
         />
       </div>
+
+      {/* Seção Separada: Áudio e Voz */}
+      <AudioSettingsSection
+        initialConfig={settings.tts}
+        onSaved={fetchSettings}
+      />
     </div>
   );
 }
