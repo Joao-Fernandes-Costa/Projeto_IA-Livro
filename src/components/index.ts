@@ -13,4 +13,6 @@ export * from "./ThemeProvider";
 export * from "./ThemeToggle";
 export * from "./StudyProcessingView";
 export * from "./StudyWorkspacePreview";
+export * from "./AudiobookPlayer";
+export * from "./ExplanatoryVideoPlayer";
 export * from "./ai";

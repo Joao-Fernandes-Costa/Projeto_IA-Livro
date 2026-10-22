@@ -4,11 +4,8 @@ import React, { useState } from "react";
 import Image from "next/image";
 import {
   FileText,
-  GraduationCap,
-  Presentation,
   Headphones,
   CheckSquare,
-  Lock,
   ArrowLeft,
   Sparkles,
   Layers,
@@ -22,13 +19,17 @@ import {
   Eye,
   Loader2,
   AlertCircle,
+  Video,
   Volume2,
 } from "lucide-react";
 import type { StudyPage } from "@/types/study";
 import type { StudyAnalysis } from "@/lib/ai/schema";
 import { formatFileSize } from "@/lib/utils";
 import { QuizPublic } from "@/lib/quiz/schema";
+import { StudyMediaPackage } from "@/lib/lecture/schema";
 import { QuizGame } from "./QuizGame";
+import { AudiobookPlayer } from "./AudiobookPlayer";
+import { ExplanatoryVideoPlayer } from "./ExplanatoryVideoPlayer";
 import { AudioExplanation } from "./AudioExplanation";
 
 interface StudyWorkspacePreviewProps {
@@ -37,33 +38,6 @@ interface StudyWorkspacePreviewProps {
   analysis?: StudyAnalysis | null;
   onBackToPages: () => void;
 }
-
-interface WorkspaceCardItem {
-  id: string;
-  title: string;
-  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" | "false" }>;
-  description: string;
-  features: string[];
-}
-
-const LOCKED_MODULES: WorkspaceCardItem[] = [
-  {
-    id: "lecture",
-    title: "Aula explicativa",
-    icon: GraduationCap,
-    description:
-      "Roteiro didático dividido em tópicos explicados passo a passo de forma simples e contextualizada.",
-    features: ["Explicação didática", "Analogias práticas", "Roteiro sequencial"],
-  },
-  {
-    id: "slides",
-    title: "Slides didáticos",
-    icon: Presentation,
-    description:
-      "Apresentação visual com tópicos diretos, esquemas de ideias e cartões para memorização rápida.",
-    features: ["Tópicos visuais", "Esquemas conceituais", "Modo apresentação"],
-  },
-];
 
 export function StudyWorkspacePreview({
   pages,
@@ -75,15 +49,12 @@ export function StudyWorkspacePreview({
   const [showFullText, setShowFullText] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Estados de Navegação por Abas
-  const [activeTab, setActiveTab] = useState<"text" | "audio" | "quiz">("text");
-
   // Estados do Questionário Interativo
   const [quizData, setQuizData] = useState<QuizPublic | null>(null);
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [quizError, setQuizError] = useState<string | null>(null);
 
-  // Estados da Explicação em Áudio
+  // Estados da Explicação em Áudio Didática
   const [audioData, setAudioData] = useState<{
     script: string;
     durationEstimate: number;
@@ -92,14 +63,29 @@ export function StudyWorkspacePreview({
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
 
+  // Estados do Pacote de Mídia (Audiobook + Vídeo Explicativo)
+  const [mediaData, setMediaData] = useState<StudyMediaPackage | null>(null);
+  const [isGeneratingMedia, setIsGeneratingMedia] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+
+  // Aba ativa
+  const [activeTab, setActiveTab] = useState<
+    "text" | "audio" | "audiobook" | "video" | "quiz"
+  >("text");
+
   const pagesCount = pages.length;
   const displayTitle = studyTitle.trim() || "Material de Estudo Personalizado";
 
   const totalPages = pagesCount;
-  const processedPages = analysis?.processedPages ?? (analysis?.pageAnalyses?.length || 0);
-  const failedPages = analysis?.failedPages ?? (totalPages - processedPages);
-  const hasAnalysis = Boolean(analysis && analysis.pageAnalyses && analysis.pageAnalyses.length > 0);
-  const confidencePercent = analysis ? Math.round(analysis.averageConfidence * 100) : 95;
+  const processedPages =
+    analysis?.processedPages ?? (analysis?.pageAnalyses?.length || 0);
+  const failedPages = analysis?.failedPages ?? totalPages - processedPages;
+  const hasAnalysis = Boolean(
+    analysis && analysis.pageAnalyses && analysis.pageAnalyses.length > 0
+  );
+  const confidencePercent = analysis
+    ? Math.round(analysis.averageConfidence * 100)
+    : 95;
 
   let readingStatus: {
     label: string;
@@ -152,13 +138,18 @@ export function StudyWorkspacePreview({
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Falha ao gerar o questionário interativo.");
+        throw new Error(
+          data.error || "Falha ao gerar o questionário interativo."
+        );
       }
 
       setQuizData(data.quiz);
       setActiveTab("quiz");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro inesperado ao gerar o questionário.";
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Erro inesperado ao gerar o questionário.";
       setQuizError(msg);
     } finally {
       setIsGeneratingQuiz(false);
@@ -196,6 +187,43 @@ export function StudyWorkspacePreview({
     }
   };
 
+  const handleGenerateMedia = async (targetTab: "audiobook" | "video") => {
+    if (!analysis) return;
+    if (mediaData) {
+      setActiveTab(targetTab);
+      return;
+    }
+
+    setIsGeneratingMedia(true);
+    setMediaError(null);
+
+    try {
+      const res = await fetch("/api/ai/generate-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studyAnalysis: analysis }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.media) {
+        throw new Error(
+          data.error || "Falha ao gerar o audiobook e o vídeo explicativo."
+        );
+      }
+
+      setMediaData(data.media);
+      setActiveTab(targetTab);
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Erro inesperado ao gerar o audiobook e vídeo.";
+      setMediaError(msg);
+    } finally {
+      setIsGeneratingMedia(false);
+    }
+  };
+
   return (
     <div className="w-full max-w-[880px] mx-auto space-y-6 animate-in fade-in duration-300">
       {/* 1. Cabeçalho do Ambiente de Estudo */}
@@ -206,7 +234,9 @@ export function StudyWorkspacePreview({
               <span
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${readingStatus.badgeClass}`}
               >
-                <span className={`w-2 h-2 rounded-full ${readingStatus.dotClass} animate-pulse`} />
+                <span
+                  className={`w-2 h-2 rounded-full ${readingStatus.dotClass} animate-pulse`}
+                />
                 <span>{readingStatus.label}</span>
               </span>
 
@@ -260,23 +290,22 @@ export function StudyWorkspacePreview({
               </button>
             )}
 
-            {/* CTA de Quiz no Header */}
             {hasAnalysis && !quizData && (
               <button
                 type="button"
                 onClick={handleGenerateQuiz}
                 disabled={isGeneratingQuiz}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition active:scale-98 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition active:scale-98 cursor-pointer disabled:opacity-60"
               >
                 {isGeneratingQuiz ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Gerando quiz...</span>
+                    <span>Gerando Quiz...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Gerar quiz</span>
+                    <span>Gerar Quiz</span>
                   </>
                 )}
               </button>
@@ -305,7 +334,11 @@ export function StudyWorkspacePreview({
               <Layers className="w-3.5 h-3.5" />
               <span>Ver as {pagesCount} páginas originais do estudo</span>
             </span>
-            {showPagesList ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            {showPagesList ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
           </button>
 
           {showPagesList && (
@@ -338,31 +371,20 @@ export function StudyWorkspacePreview({
         </div>
       </div>
 
-      {/* Alerta de erro na geração do áudio */}
-      {audioError && (
+      {/* Alertas de erro */}
+      {(quizError || audioError || mediaError) && (
         <div className="rounded-2xl p-4 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 text-xs sm:text-sm text-red-800 dark:text-red-300 flex items-start gap-3 shadow-sm animate-fadeIn">
           <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <strong className="font-bold">Não foi possível gerar a explicação em áudio:</strong>
-            <p className="leading-relaxed">{audioError}</p>
+            <strong className="font-bold">Atenção:</strong>
+            <p className="leading-relaxed">{quizError || audioError || mediaError}</p>
           </div>
         </div>
       )}
 
-      {/* Alerta de erro na geração do questionário */}
-      {quizError && (
-        <div className="rounded-2xl p-4 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 text-xs sm:text-sm text-red-800 dark:text-red-300 flex items-start gap-3 shadow-sm animate-fadeIn">
-          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <strong className="font-bold">Não foi possível gerar o questionário interativo:</strong>
-            <p className="leading-relaxed">{quizError}</p>
-          </div>
-        </div>
-      )}
-
-      {/* 2. ABAS DE NAVEGAÇÃO: Exibidas após o estudo ser processado com sucesso */}
+      {/* 2. ABAS DE NAVEGAÇÃO DO ESTUDO (Aparecem quando o estudo é processado com sucesso) */}
       {hasAnalysis && (
-        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 animate-fadeIn flex-wrap">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
           <button
             type="button"
             onClick={() => setActiveTab("text")}
@@ -373,10 +395,10 @@ export function StudyWorkspacePreview({
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span>Texto e resumo</span>
+            <span>Texto e Resumo</span>
           </button>
 
-          {/* Aba Explicação em Áudio */}
+          {/* Aba: Explicação em Áudio */}
           <button
             type="button"
             onClick={() => {
@@ -391,31 +413,94 @@ export function StudyWorkspacePreview({
                 : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
             }`}
           >
-            <Headphones className="w-4 h-4" />
+            {isGeneratingAudio ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Headphones className="w-4 h-4" />
+            )}
             <span>
               Explicação em áudio {audioData ? `(~${Math.ceil(audioData.durationEstimate / 60)} min)` : ""}
             </span>
           </button>
 
-          {/* Aba Questionário (exibida quando o quiz foi gerado ou quando o usuário desejar gerar) */}
-          {quizData && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("quiz")}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer ${
-                activeTab === "quiz"
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
-                  : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-              }`}
-            >
+          {/* Aba: Audiobook */}
+          <button
+            type="button"
+            onClick={() => handleGenerateMedia("audiobook")}
+            disabled={isGeneratingMedia}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer disabled:opacity-50 ${
+              activeTab === "audiobook"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+            }`}
+          >
+            {isGeneratingMedia ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Headphones className="w-4 h-4" />
+            )}
+            <span>
+              {mediaData
+                ? `Audiobook (${mediaData.audiobookChapters.length} faixas)`
+                : "Audiobook Explicativo"}
+            </span>
+          </button>
+
+          {/* Aba: Vídeo Explicativo */}
+          <button
+            type="button"
+            onClick={() => handleGenerateMedia("video")}
+            disabled={isGeneratingMedia}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer disabled:opacity-50 ${
+              activeTab === "video"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/25"
+                : "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+            }`}
+          >
+            {isGeneratingMedia ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Video className="w-4 h-4" />
+            )}
+            <span>
+              {mediaData
+                ? `Vídeo-Aula (${mediaData.videoScenes.length} slides)`
+                : "Vídeo Explicativo"}
+            </span>
+          </button>
+
+          {/* Aba: Questionário */}
+          <button
+            type="button"
+            onClick={() => {
+              if (quizData) {
+                setActiveTab("quiz");
+              } else {
+                handleGenerateQuiz();
+              }
+            }}
+            disabled={isGeneratingQuiz}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer disabled:opacity-50 ${
+              activeTab === "quiz"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+            }`}
+          >
+            {isGeneratingQuiz ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
               <CheckSquare className="w-4 h-4" />
-              <span>Questionário ({quizData.totalQuestions} questões)</span>
-            </button>
-          )}
+            )}
+            <span>
+              {quizData
+                ? `Questionário (${quizData.totalQuestions} questões)`
+                : "Gerar Questionário"}
+            </span>
+          </button>
         </div>
       )}
 
-      {/* 3. VISUALIZAÇÃO CONDICIONAL CONFORME A ABA ATIVA */}
+      {/* 3. CONTEÚDO DAS ABAS */}
       {activeTab === "audio" ? (
         audioData ? (
           <AudioExplanation
@@ -463,6 +548,19 @@ export function StudyWorkspacePreview({
             </div>
           </div>
         )
+      ) : activeTab === "audiobook" && mediaData ? (
+        <AudiobookPlayer
+          media={mediaData}
+          studyTitle={displayTitle}
+          onBackToStudy={() => setActiveTab("text")}
+        />
+      ) : activeTab === "video" && mediaData ? (
+        <ExplanatoryVideoPlayer
+          media={mediaData}
+          studyTitle={displayTitle}
+          pages={pages}
+          onBackToStudy={() => setActiveTab("text")}
+        />
       ) : activeTab === "quiz" && quizData ? (
         <QuizGame
           quiz={quizData}
@@ -489,7 +587,8 @@ export function StudyWorkspacePreview({
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Extração integral do texto do livro físico e síntese conceitual estruturada.
+                    Extração integral do texto do livro físico e síntese
+                    conceitual estruturada.
                   </p>
                 </div>
               </div>
@@ -520,7 +619,9 @@ export function StudyWorkspacePreview({
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition cursor-pointer active:scale-95"
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  <span>{showFullText ? "Recolher transcrição" : "Ver texto completo"}</span>
+                  <span>
+                    {showFullText ? "Recolher transcrição" : "Ver texto completo"}
+                  </span>
                 </button>
               </div>
             </div>
@@ -543,7 +644,9 @@ export function StudyWorkspacePreview({
                           <BookOpen className="w-3.5 h-3.5" />
                           <span>
                             Página {pageAnalysis.pageNumber}
-                            {pageAnalysis.title ? ` — ${pageAnalysis.title}` : ""}
+                            {pageAnalysis.title
+                              ? ` — ${pageAnalysis.title}`
+                              : ""}
                           </span>
                         </span>
                         <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
@@ -606,14 +709,14 @@ export function StudyWorkspacePreview({
             )}
           </div>
 
-          {/* 4. Grid de Módulos (Áudio Ativo + Quiz Ativo + Módulos Futuros) */}
+          {/* 4. Grid de Módulos (Explicação em Áudio + Audiobook + Vídeo + Quiz) */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Módulos Educacionais
+              Módulos Educacionais Disponíveis
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Card 1: Explicação em Áudio (Ativo com IA) */}
+              {/* Card 1: Explicação em Áudio (Roteiro Didático Falado) */}
               <div
                 className={`rounded-3xl bg-white dark:bg-slate-900 border p-5 flex flex-col justify-between shadow-sm transition ${
                   audioData
@@ -698,7 +801,113 @@ export function StudyWorkspacePreview({
                 </div>
               </div>
 
-              {/* Card 2: Quiz Interativo (Ativo com IA) */}
+              {/* Card 2: Audiobook Completo */}
+              <div
+                className={`rounded-3xl bg-white dark:bg-slate-900 border p-5 flex flex-col justify-between shadow-sm transition ${
+                  mediaData
+                    ? "border-indigo-400 dark:border-indigo-700 ring-1 ring-indigo-400/30"
+                    : "border-slate-200 dark:border-slate-800"
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200 dark:border-indigo-800">
+                      <Headphones className="w-5 h-5" />
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      <span>{mediaData ? "Audiobook Pronto" : "Voz Neural"}</span>
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Audiobook Didático
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mt-1">
+                      Narração em capítulos com velocidade ajustável e opção de download em `.mp3`.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateMedia("audiobook")}
+                    disabled={isGeneratingMedia || !hasAnalysis}
+                    className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isGeneratingMedia ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Gerando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Headphones className="w-4 h-4" />
+                        <span>
+                          {mediaData ? "Acessar Audiobook" : "Gerar Audiobook"}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 3: Vídeo Explicativo */}
+              <div
+                className={`rounded-3xl bg-white dark:bg-slate-900 border p-5 flex flex-col justify-between shadow-sm transition ${
+                  mediaData
+                    ? "border-emerald-400 dark:border-emerald-700 ring-1 ring-emerald-400/30"
+                    : "border-slate-200 dark:border-slate-800"
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200 dark:border-emerald-800">
+                      <Video className="w-5 h-5" />
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      <span>{mediaData ? "Vídeo Pronto" : "Slides + Voz"}</span>
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Vídeo Explicativo
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mt-1">
+                      Vídeo-aula animada com slides dinâmicos, miniatura da página e legendas.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateMedia("video")}
+                    disabled={isGeneratingMedia || !hasAnalysis}
+                    className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isGeneratingMedia ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Gerando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Video className="w-4 h-4" />
+                        <span>
+                          {mediaData ? "Assistir Vídeo" : "Gerar Vídeo-Aula"}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 4: Quiz Interativo */}
               <div
                 className={`rounded-3xl bg-white dark:bg-slate-900 border p-5 flex flex-col justify-between shadow-sm transition ${
                   quizData
@@ -709,7 +918,7 @@ export function StudyWorkspacePreview({
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200 dark:border-indigo-800">
-                      <CheckSquare className="w-5 h-5" aria-hidden="true" />
+                      <CheckSquare className="w-5 h-5" />
                     </div>
 
                     <span
@@ -719,7 +928,7 @@ export function StudyWorkspacePreview({
                           : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800"
                       }`}
                     >
-                      <Sparkles className="w-2.5 h-2.5" aria-hidden="true" />
+                      <Sparkles className="w-2.5 h-2.5" />
                       <span>{quizData ? "Questionário Pronto" : "Disponível com IA"}</span>
                     </span>
                   </div>
@@ -729,25 +938,9 @@ export function StudyWorkspacePreview({
                       Quiz interativo
                     </h3>
                     <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mt-1">
-                      Questões de múltipla escolha geradas pela IA a partir do conteúdo real das
-                      páginas, com gabarito seguro e justificativa didática.
+                      Questões de múltipla escolha geradas pela IA com gabarito seguro e justificativa didática.
                     </p>
                   </div>
-
-                  <ul className="space-y-1 pt-1">
-                    <li className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
-                      <span>5 a 10 questões exclusivas das páginas</span>
-                    </li>
-                    <li className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
-                      <span>Gabarito protegido no servidor</span>
-                    </li>
-                    <li className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
-                      <span>Avaliação instantânea com explicações</span>
-                    </li>
-                  </ul>
                 </div>
 
                 <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800">
@@ -770,75 +963,18 @@ export function StudyWorkspacePreview({
                       {isGeneratingQuiz ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Gerando questionário...</span>
+                          <span>Gerando...</span>
                         </>
                       ) : (
                         <>
                           <Sparkles className="w-4 h-4" />
-                          <span>Gerar questionário interativo</span>
+                          <span>Gerar questionário</span>
                         </>
                       )}
                     </button>
                   )}
                 </div>
               </div>
-
-              {/* Módulos Futuros Bloqueados */}
-              {LOCKED_MODULES.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <div
-                    key={card.id}
-                    className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 flex flex-col justify-between shadow-sm opacity-85 hover:opacity-100 transition"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center shrink-0">
-                          <Icon className="w-5 h-5" aria-hidden="true" />
-                        </div>
-
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                          <Lock className="w-2.5 h-2.5" aria-hidden="true" />
-                          <span>Disponível na próxima etapa</span>
-                        </span>
-                      </div>
-
-                      <div>
-                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                          {card.title}
-                        </h3>
-                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mt-1">
-                          {card.description}
-                        </p>
-                      </div>
-
-                      <ul className="space-y-1 pt-1">
-                        {card.features.map((feat, i) => (
-                          <li
-                            key={i}
-                            className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5"
-                          >
-                            <span className="w-1 h-1 rounded-full bg-slate-400" />
-                            <span>{feat}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800">
-                      <button
-                        type="button"
-                        disabled
-                        aria-disabled="true"
-                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800/70 text-slate-400 dark:text-slate-500 border border-slate-200/80 dark:border-slate-800 cursor-not-allowed select-none"
-                      >
-                        <Lock className="w-3 h-3" aria-hidden="true" />
-                        <span>Em breve com IA</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         </>
