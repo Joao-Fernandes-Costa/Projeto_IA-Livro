@@ -13,3 +13,4 @@ export * from "./ThemeProvider";
 export * from "./ThemeToggle";
 export * from "./StudyProcessingView";
 export * from "./StudyWorkspacePreview";
+export * from "./ai";

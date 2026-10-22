@@ -1,5 +1,55 @@
 import { AIStudyResult } from "./study";
 
+export type AIProviderName =
+  | "mock"
+  | "ollama"
+  | "openrouter"
+  | "openai"
+  | "gemini"
+  | "custom";
+
+export interface AIHealthResult {
+  success: boolean;
+  provider: AIProviderName;
+  model: string;
+  supportsVision: boolean;
+  supportsStructuredOutput: boolean;
+  message: string;
+}
+
+export interface AnalyzePageInput {
+  pageNumber: number;
+  imageBuffer?: Buffer;
+  imageBase64?: string;
+  mimeType?: string;
+  studyTitle?: string;
+}
+
+export interface AnalyzePageResult {
+  pageNumber: number;
+  extractedText: string;
+  summary: string;
+  keyPoints: string[];
+}
+
+export interface AIProvider {
+  readonly name: AIProviderName;
+  checkHealth(): Promise<AIHealthResult>;
+  analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult>;
+  analyzePages?(request: AIAnalysisRequest): Promise<AIStudyResult>;
+}
+
+export interface AIConfiguration {
+  activeProvider: AIProviderName;
+  activeModel: string;
+  baseUrl?: string;
+  apiKeyConfigured: boolean;
+  supportsVision: boolean;
+  supportsStructuredOutput: boolean;
+  isEnabled: boolean;
+  customProviderName?: string;
+}
+
 export interface AIAnalysisRequest {
   title?: string;
   pages: Array<{
@@ -14,12 +64,35 @@ export interface AIAnalysisRequest {
 
 export interface IAIProvider {
   readonly providerName: string;
-
   analyzePages(request: AIAnalysisRequest): Promise<AIStudyResult>;
 }
 
-export interface AIProviderConfig {
+export interface AIProviderDetailConfig {
+  baseUrl?: string;
+  model: string;
+  apiKeyConfigured: boolean;
+  name?: string;
+  description?: string;
+  defaultModel?: string;
+  defaultBaseUrl?: string;
+}
+
+export interface AISettingsResponse extends AIConfiguration {
+  providers: Record<AIProviderName, AIProviderDetailConfig>;
+}
+
+export interface AISettingsUpdateRequest {
+  activeProvider?: AIProviderName;
+  activeModel?: string;
+  baseUrl?: string;
+  customProviderName?: string;
   apiKey?: string;
+  providerConfigs?: Partial<Record<AIProviderName, Partial<AIProviderDetailConfig> & { apiKey?: string }>>;
+}
+
+export interface AITestRequest {
+  provider: AIProviderName;
   model?: string;
-  providerType?: "mock" | "gemini";
+  baseUrl?: string;
+  apiKey?: string;
 }

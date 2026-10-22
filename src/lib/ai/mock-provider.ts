@@ -1,64 +1,96 @@
-import { IAIProvider, AIAnalysisRequest } from "@/types/ai";
+import {
+  AIProvider,
+  AIProviderName,
+  AIHealthResult,
+  AnalyzePageInput,
+  AnalyzePageResult,
+  IAIProvider,
+  AIAnalysisRequest,
+} from "@/types/ai";
 import { AIStudyResult } from "@/types/study";
 
-export class MockAIProvider implements IAIProvider {
-  readonly providerName = "MockProvider";
+export class MockAIProvider implements AIProvider, IAIProvider {
+  public readonly name: AIProviderName = "mock";
+  public readonly providerName: string = "mock";
+  private model: string;
 
-  async analyzePages(request: AIAnalysisRequest): Promise<AIStudyResult> {
-    // Simula uma latência de processamento
-    await new Promise((resolve) => setTimeout(resolve, 800));
+  constructor(model: string = "mock-vision-v1") {
+    this.model = model;
+  }
 
-    const title = request.title?.trim() || "Estudo sem título";
-    const totalPages = request.pages.length;
+  public async checkHealth(): Promise<AIHealthResult> {
+    return {
+      success: true,
+      provider: "mock",
+      model: this.model,
+      supportsVision: true,
+      supportsStructuredOutput: true,
+      message: "Provider Mock disponível. Ambiente de simulação operacional para desenvolvimento e testes locais.",
+    };
+  }
+
+  public async analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult> {
+    return {
+      pageNumber: input.pageNumber,
+      extractedText: `[Texto Simulado da Página ${input.pageNumber}] Conteúdo didático extraído com fidelidade a partir do material de estudo.`,
+      summary: `Resumo simulado dos conceitos e fundamentos apresentados na página ${input.pageNumber}.`,
+      keyPoints: [
+        `Ponto essencial ${input.pageNumber}.1: Fundamentos teóricos e conceitos principais.`,
+        `Ponto essencial ${input.pageNumber}.2: Aplicações práticas e conexões interdisciplinares.`,
+        `Ponto essencial ${input.pageNumber}.3: Exemplos contextualizados para fixação.`,
+      ],
+    };
+  }
+
+  public async analyzePages(request: AIAnalysisRequest): Promise<AIStudyResult> {
+    const pageCount = request.pages.length;
+    const title = request.title || "Material de Estudo";
 
     return {
       studyTitle: title,
-      pageCount: totalPages,
-      extractedMarkdown: `# ${title}\n\nConteúdo simulado extraído com sucesso de ${totalPages} página(s).\n\n- Conceito 1: Introdução ao tema\n- Conceito 2: Análise detalhada\n- Conceito 3: Conclusões práticas`,
+      pageCount,
+      extractedMarkdown: `# ${title}\n\nEste é um resumo gerado pelo MockProvider a partir de ${pageCount} páginas de livro enviadas.\n\n## Principais Conceitos\n- Fundamento 1: Estruturação clara das ideias\n- Fundamento 2: Exemplificação contextualizada\n- Fundamento 3: Roteiro didático de fixação`,
       lecture: {
         title: `Aula Didática: ${title}`,
-        summary: `Resumo explicativo abrangendo as ${totalPages} página(s) analisadas no lote de estudo.`,
-        script: `Olá! Vamos iniciar a revisão do capítulo sobre ${title}. Ao longo das páginas enviadas, os pontos centrais abordam definições fundamentais e suas aplicações práticas.`,
-        slides: request.pages.map((page, index) => ({
-          pageNumber: index + 1,
-          title: `Tópico ${index + 1}: ${page.name}`,
-          content: `Síntese dos tópicos destacados na página ${index + 1} do material de estudo.`,
+        summary: `Visão geral estruturada sobre ${title}, cobrindo os pontos essenciais das ${pageCount} páginas fornecidas.`,
+        script: `Olá! Hoje vamos estudar ${title}. Este material aborda os conceitos essenciais extraídos diretamente do seu livro físico. Vamos passar por cada etapa de forma clara e objetiva.`,
+        slides: request.pages.map((p, idx) => ({
+          pageNumber: idx + 1,
+          title: `Tópico ${idx + 1}: ${p.name || `Página ${idx + 1}`}`,
+          content: `Explicação detalhada dos pontos centrais abordados na página ${idx + 1} do seu material de estudo.`,
           keyPoints: [
-            "Definição do conceito central",
-            "Exemplo aplicado ao cotidiano",
-            "Ponto de atenção para fixação",
+            "Conceito fundamental abordado",
+            "Exemplo prático de aplicação",
+            "Dica de fixação para provas",
           ],
         })),
       },
       quiz: [
         {
           id: "q1",
-          question: `Qual é o objetivo principal abordado no material de "${title}"?`,
+          question: `Qual o principal conceito introduzido no material sobre "${title}"?`,
           options: [
-            "Introduzir e estruturar os conceitos fundamentais do capítulo",
-            "Descartar fórmulas e focar apenas em opiniões pessoais",
-            "Apresentar fatos históricos sem conexão com a matéria",
-            "Substituir a bibliografia obrigatória por leitura livre",
+            "A importância da fundamentação teórica e leitura contextualizada",
+            "Apenas repetição mecânica de fórmulas",
+            "Ignorar a sequência cronológica dos fatos",
+            "Nenhuma das opções anteriores",
           ],
           answerIndex: 0,
-          explanation:
-            "O capítulo estrutura os fundamentos essenciais e estabelece a base teórica para o aprendizado.",
+          explanation: "O material enfatiza a construção sequencial do conhecimento com base nas páginas do livro.",
           pageReference: 1,
         },
         {
           id: "q2",
-          question:
-            "De acordo com a síntese das páginas, qual recomendação prática deve ser adotada?",
+          question: "Como o conteúdo apresentado pode ser aplicado na prática?",
           options: [
-            "Ignorar exercícios de fixação",
-            "Revisar os tópicos-chave e associá-los a exemplos reais",
-            "Memorizar dados sem entender o contexto",
-            "Interromper o estudo antes de concluir os tópicos principais",
+            "Por meio de exercícios estruturados e resolução de problemas reais",
+            "Apenas através de memorização passiva",
+            "Sem qualquer aplicação no mundo real",
+            "Exclusivamente por leitura rápida",
           ],
-          answerIndex: 1,
-          explanation:
-            "A revisão dos tópicos-chave com exemplos do dia a dia consolida a retenção na memória.",
-          pageReference: Math.min(2, totalPages),
+          answerIndex: 0,
+          explanation: "A aplicação prática requer resolução ativa e conexão direta com os conceitos.",
+          pageReference: Math.min(2, pageCount),
         },
       ],
       processedAt: new Date().toISOString(),

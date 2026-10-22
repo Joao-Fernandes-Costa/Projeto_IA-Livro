@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { BookOpen, BookMarked, HelpCircle, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, BookMarked, HelpCircle, Sparkles, Settings } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface HomeHeaderProps {
@@ -48,6 +49,16 @@ export function HomeHeader({ onOpenMyStudies, onOpenHelp }: HomeHeaderProps) {
 
           {/* Botão de Alternância de Tema Claro / Escuro */}
           <ThemeToggle />
+
+          {/* Link para Configurações de IA */}
+          <Link
+            href="/configuracoes/ia"
+            className="p-1.5 sm:p-2 rounded-xl text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition cursor-pointer"
+            aria-label="Configurações de IA"
+            title="Configurar Provedores e Modelos de IA"
+          >
+            <Settings className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+          </Link>
 
           <button
             type="button"
