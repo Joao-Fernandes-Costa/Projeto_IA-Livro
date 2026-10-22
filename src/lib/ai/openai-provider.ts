@@ -6,6 +6,7 @@ import {
   AnalyzePageResult,
 } from "@/types/ai";
 import { checkVisionSupport, checkStructuredOutputSupport, validateBaseUrl } from "./provider";
+import { MULTIMODAL_PAGE_READING_PROMPT, parseAndValidatePageAnalysis } from "./schema";
 
 export class OpenAIProvider implements AIProvider {
   public readonly name: AIProviderName = "openai";
@@ -28,7 +29,6 @@ export class OpenAIProvider implements AIProvider {
     const supportsVision = checkVisionSupport(this.model);
     const supportsStructuredOutput = checkStructuredOutputSupport("openai", this.model);
 
-    // 1. Validar presença da API key
     if (!this.apiKey) {
       return {
         success: false,
@@ -56,7 +56,6 @@ export class OpenAIProvider implements AIProvider {
     const timeout = setTimeout(() => controller.abort(), 7000);
 
     try {
-      // 2. Testar autenticação através da listagem de modelos da OpenAI
       const res = await fetch(`${this.baseUrl}/models`, {
         method: "GET",
         headers: {
@@ -86,17 +85,6 @@ export class OpenAIProvider implements AIProvider {
           supportsVision,
           supportsStructuredOutput,
           message: "Limite de taxa ou créditos esgotados na sua conta OpenAI (Erro 429).",
-        };
-      }
-
-      if (!res.ok) {
-        return {
-          success: false,
-          provider: "openai",
-          model: this.model,
-          supportsVision,
-          supportsStructuredOutput,
-          message: `OpenAI respondeu com erro HTTP ${res.status}: ${res.statusText}`,
         };
       }
 
@@ -144,21 +132,100 @@ export class OpenAIProvider implements AIProvider {
   }
 
   public async analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult> {
-    const health = await this.checkHealth();
-    if (!health.success) {
-      throw new Error(`OpenAI indisponível: ${health.message}`);
-    }
-    if (!health.supportsVision) {
-      throw new Error("O modelo selecionado não possui suporte para imagens e não pode ler páginas de livros.");
+    if (!this.apiKey) {
+      const err = new Error("Chave de API da OpenAI não configurada.");
+      (err as unknown as { code: string }).code = "API_KEY_MISSING";
+      throw err;
     }
 
-    return {
-      pageNumber: input.pageNumber,
-      extractedText: `[Texto extraído via OpenAI ${this.model} - Página ${input.pageNumber}]`,
-      summary: `Resumo gerado pelo modelo ${this.model} da OpenAI.`,
-      keyPoints: [
-        `Conceito chave da página ${input.pageNumber} extraído pela OpenAI.`,
-      ],
-    };
+    const mime = input.mimeType || "image/jpeg";
+    const dataUrl = input.imageBase64?.startsWith("data:")
+      ? input.imageBase64
+      : `data:${mime};base64,${input.imageBase64 || input.imageBuffer?.toString("base64") || ""}`;
+
+    if (!dataUrl || dataUrl.length < 50) {
+      throw new Error("Dados da imagem inválidos ou corrompidos.");
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    try {
+      const res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `${MULTIMODAL_PAGE_READING_PROMPT}\n\nPágina atual do livro: ${input.pageNumber}`,
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: dataUrl,
+                  },
+                },
+              ],
+            },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        const errMessage = errorJson?.error?.message || res.statusText;
+
+        if (
+          res.status === 400 &&
+          (errMessage.toLowerCase().includes("image_url is not supported") ||
+            errMessage.toLowerCase().includes("vision") ||
+            errMessage.toLowerCase().includes("multimodal"))
+        ) {
+          const err = new Error("O modelo selecionado não possui suporte para leitura de imagens.");
+          (err as unknown as { code: string }).code = "VISION_NOT_SUPPORTED";
+          throw err;
+        }
+
+        if (res.status === 401) {
+          const err = new Error("Chave de API da OpenAI inválida.");
+          (err as unknown as { code: string }).code = "API_KEY_INVALID";
+          throw err;
+        }
+
+        if (res.status === 429) {
+          const err = new Error("Limite de requisições excedido ou cota esgotada na OpenAI.");
+          (err as unknown as { code: string }).code = "RATE_LIMIT_EXCEEDED";
+          throw err;
+        }
+
+        throw new Error(`OpenAI retornou erro HTTP ${res.status}: ${errMessage}`);
+      }
+
+      const json = await res.json();
+      const content = json.choices?.[0]?.message?.content || "";
+
+      return parseAndValidatePageAnalysis(content, input.pageNumber);
+    } catch (err: unknown) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === "AbortError") {
+        const timeoutErr = new Error("A leitura da página excedeu o tempo máximo na OpenAI.");
+        (timeoutErr as unknown as { code: string }).code = "MODEL_TIMEOUT";
+        throw timeoutErr;
+      }
+      throw err;
+    }
   }
 }

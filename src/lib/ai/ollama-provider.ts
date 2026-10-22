@@ -6,6 +6,7 @@ import {
   AnalyzePageResult,
 } from "@/types/ai";
 import { checkVisionSupport, checkStructuredOutputSupport, validateBaseUrl } from "./provider";
+import { MULTIMODAL_PAGE_READING_PROMPT, parseAndValidatePageAnalysis } from "./schema";
 
 export class OllamaAIProvider implements AIProvider {
   public readonly name: AIProviderName = "ollama";
@@ -35,13 +36,10 @@ export class OllamaAIProvider implements AIProvider {
     const timeout = setTimeout(() => controller.abort(), 6000);
 
     try {
-      // 1. Verificar se o Ollama está rodando e obter a lista de modelos instalados
       const res = await fetch(`${this.baseUrl}/api/tags`, {
         method: "GET",
         signal: controller.signal,
-        headers: {
-          Accept: "application/json",
-        },
+        headers: { Accept: "application/json" },
       });
 
       clearTimeout(timeout);
@@ -62,7 +60,6 @@ export class OllamaAIProvider implements AIProvider {
         ? data.models.map((m: { name?: string }) => m.name || "")
         : [];
 
-      // 2. Verificar se o modelo especificado está instalado
       const modelClean = this.model.toLowerCase();
       const isModelInstalled = installedModels.some((m) => {
         const lower = m.toLowerCase();
@@ -89,7 +86,7 @@ export class OllamaAIProvider implements AIProvider {
 
       if (!supportsVision) {
         return {
-          success: true, // Conexão bem-sucedida, porém sem visão
+          success: true,
           provider: "ollama",
           model: this.model,
           supportsVision: false,
@@ -115,7 +112,7 @@ export class OllamaAIProvider implements AIProvider {
           success: false,
           provider: "ollama",
           model: this.model,
-          supportsVision: false,
+          supportsVision: checkVisionSupport(this.model),
           supportsStructuredOutput: false,
           message: `Tempo limite esgotado ao conectar no Ollama (${this.baseUrl}). Verifique se o servidor está ativo.`,
         };
@@ -125,7 +122,7 @@ export class OllamaAIProvider implements AIProvider {
         success: false,
         provider: "ollama",
         model: this.model,
-        supportsVision: false,
+        supportsVision: checkVisionSupport(this.model),
         supportsStructuredOutput: false,
         message: `Ollama offline ou inalcançável em ${this.baseUrl}. Inicie o serviço executando 'ollama serve' no seu terminal. (${errorMsg})`,
       };
@@ -133,22 +130,72 @@ export class OllamaAIProvider implements AIProvider {
   }
 
   public async analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult> {
-    const health = await this.checkHealth();
-    if (!health.success) {
-      throw new Error(`Ollama indisponível: ${health.message}`);
-    }
-    if (!health.supportsVision) {
-      throw new Error("O modelo selecionado não possui suporte para imagens e não pode ler páginas de livros.");
+    const rawBase64 = input.imageBase64
+      ? input.imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, "")
+      : input.imageBuffer
+      ? input.imageBuffer.toString("base64")
+      : "";
+
+    if (!rawBase64) {
+      throw new Error("Nenhuma imagem fornecida para leitura no Ollama.");
     }
 
-    return {
-      pageNumber: input.pageNumber,
-      extractedText: `[Texto extraído via Ollama ${this.model} - Página ${input.pageNumber}]`,
-      summary: `Resumo gerado pelo Ollama (${this.model}) para a página ${input.pageNumber}.`,
-      keyPoints: [
-        `Tópico ${input.pageNumber}.1 identificado pelo Ollama`,
-        `Tópico ${input.pageNumber}.2 sintetizado localmente`,
-      ],
-    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000); // 45s por página
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            {
+              role: "user",
+              content: `${MULTIMODAL_PAGE_READING_PROMPT}\n\nPágina atual: ${input.pageNumber}`,
+              images: [rawBase64],
+            },
+          ],
+          format: "json",
+          stream: false,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errMessage = errorData.error || response.statusText;
+
+        // Se o Ollama acusar que o modelo não suporta imagem
+        if (
+          errMessage.toLowerCase().includes("does not support images") ||
+          errMessage.toLowerCase().includes("vision")
+        ) {
+          const err = new Error("O modelo selecionado não possui suporte para leitura de imagens.");
+          (err as unknown as { code: string }).code = "VISION_NOT_SUPPORTED";
+          throw err;
+        }
+
+        throw new Error(`Ollama retornou erro HTTP ${response.status}: ${errMessage}`);
+      }
+
+      const resultData = await response.json();
+      const rawText = resultData.message?.content || "";
+
+      return parseAndValidatePageAnalysis(rawText, input.pageNumber);
+    } catch (err: unknown) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === "AbortError") {
+        const timeoutErr = new Error("A leitura da página excedeu o tempo limite máximo no Ollama.");
+        (timeoutErr as unknown as { code: string }).code = "MODEL_TIMEOUT";
+        throw timeoutErr;
+      }
+      throw err;
+    }
   }
 }

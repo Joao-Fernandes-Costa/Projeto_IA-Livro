@@ -6,6 +6,7 @@ import {
   AnalyzePageResult,
 } from "@/types/ai";
 import { checkVisionSupport, checkStructuredOutputSupport, validateBaseUrl } from "./provider";
+import { MULTIMODAL_PAGE_READING_PROMPT, parseAndValidatePageAnalysis } from "./schema";
 
 export class CustomOpenAIProvider implements AIProvider {
   public readonly name: AIProviderName = "custom";
@@ -31,7 +32,6 @@ export class CustomOpenAIProvider implements AIProvider {
     const supportsVision = checkVisionSupport(this.model);
     const supportsStructuredOutput = checkStructuredOutputSupport("custom", this.model);
 
-    // 1. Validar URL base
     if (!this.baseUrl) {
       return {
         success: false,
@@ -59,10 +59,7 @@ export class CustomOpenAIProvider implements AIProvider {
     const timeout = setTimeout(() => controller.abort(), 6000);
 
     try {
-      // 2. Testar compatibilidade OpenAI chamando /models
-      const headers: Record<string, string> = {
-        Accept: "application/json",
-      };
+      const headers: Record<string, string> = { Accept: "application/json" };
       if (this.apiKey) {
         headers["Authorization"] = `Bearer ${this.apiKey}`;
       }
@@ -123,8 +120,8 @@ export class CustomOpenAIProvider implements AIProvider {
           success: false,
           provider: "custom",
           model: this.model,
-          supportsVision: false,
-          supportsStructuredOutput: false,
+          supportsVision,
+          supportsStructuredOutput,
           message: `Tempo limite esgotado ao conectar no ${this.customName} (${this.baseUrl}).`,
         };
       }
@@ -133,29 +130,100 @@ export class CustomOpenAIProvider implements AIProvider {
         success: false,
         provider: "custom",
         model: this.model,
-        supportsVision: false,
-        supportsStructuredOutput: false,
+        supportsVision,
+        supportsStructuredOutput,
         message: `Não foi possível conectar ao ${this.customName} em ${this.baseUrl}. Verifique se o serviço está ativo. (${err instanceof Error ? err.message : String(err)})`,
       };
     }
   }
 
   public async analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult> {
-    const health = await this.checkHealth();
-    if (!health.success) {
-      throw new Error(`${this.customName} indisponível: ${health.message}`);
-    }
-    if (!health.supportsVision) {
-      throw new Error("O modelo selecionado não possui suporte para imagens e não pode ler páginas de livros.");
+    const mime = input.mimeType || "image/jpeg";
+    const dataUrl = input.imageBase64?.startsWith("data:")
+      ? input.imageBase64
+      : `data:${mime};base64,${input.imageBase64 || input.imageBuffer?.toString("base64") || ""}`;
+
+    if (!dataUrl || dataUrl.length < 50) {
+      throw new Error("Dados da imagem inválidos ou corrompidos para envio ao endpoint personalizado.");
     }
 
-    return {
-      pageNumber: input.pageNumber,
-      extractedText: `[Texto extraído via ${this.customName} (${this.model}) - Página ${input.pageNumber}]`,
-      summary: `Resumo gerado pelo endpoint ${this.customName} (${this.model}).`,
-      keyPoints: [
-        `Conceito extraído via endpoint personalizado compatível com OpenAI.`,
-      ],
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
     };
+    if (this.apiKey) {
+      headers["Authorization"] = `Bearer ${this.apiKey}`;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    try {
+      const res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `${MULTIMODAL_PAGE_READING_PROMPT}\n\nPágina atual do livro: ${input.pageNumber}`,
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: dataUrl,
+                  },
+                },
+              ],
+            },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        const errMessage = errorJson?.error?.message || res.statusText;
+
+        if (
+          res.status === 400 &&
+          (errMessage.toLowerCase().includes("image") ||
+            errMessage.toLowerCase().includes("vision") ||
+            errMessage.toLowerCase().includes("multimodal"))
+        ) {
+          const err = new Error("O modelo selecionado não possui suporte para leitura de imagens.");
+          (err as unknown as { code: string }).code = "VISION_NOT_SUPPORTED";
+          throw err;
+        }
+
+        if (res.status === 401) {
+          const err = new Error(`Chave de autenticação recusada pelo ${this.customName}.`);
+          (err as unknown as { code: string }).code = "API_KEY_INVALID";
+          throw err;
+        }
+
+        throw new Error(`${this.customName} erro HTTP ${res.status}: ${errMessage}`);
+      }
+
+      const json = await res.json();
+      const content = json.choices?.[0]?.message?.content || "";
+
+      return parseAndValidatePageAnalysis(content, input.pageNumber);
+    } catch (err: unknown) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === "AbortError") {
+        const timeoutErr = new Error(`A leitura da página excedeu o tempo máximo no ${this.customName}.`);
+        (timeoutErr as unknown as { code: string }).code = "MODEL_TIMEOUT";
+        throw timeoutErr;
+      }
+      throw err;
+    }
   }
 }

@@ -1,4 +1,7 @@
 import { AIStudyResult } from "./study";
+import type { PageAnalysis, PageSection, PageProcessingError, StudyAnalysis } from "@/lib/ai/schema";
+
+export type { PageAnalysis, PageSection, PageProcessingError, StudyAnalysis };
 
 export type AIProviderName =
   | "mock"
@@ -22,15 +25,11 @@ export interface AnalyzePageInput {
   imageBuffer?: Buffer;
   imageBase64?: string;
   mimeType?: string;
+  fileName?: string;
   studyTitle?: string;
 }
 
-export interface AnalyzePageResult {
-  pageNumber: number;
-  extractedText: string;
-  summary: string;
-  keyPoints: string[];
-}
+export type AnalyzePageResult = PageAnalysis;
 
 export interface AIProvider {
   readonly name: AIProviderName;

@@ -1,290 +1,414 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import Link from "next/link";
 import {
   Loader2,
   CheckCircle2,
-  Clock,
-  Layers,
+  AlertCircle,
+  FileWarning,
+  ArrowLeft,
+  RefreshCw,
+  Settings,
+  Play,
+  Square,
   Sparkles,
-  ArrowRight,
-  BookOpen,
+  Bot,
+  Layers,
 } from "lucide-react";
-import { PREPARATION_STEPS, STUDY_MESSAGES } from "@/lib/constants";
-import type { PreparationStepState } from "@/types/study";
-
-/**
- * SIMULAÇÃO: Processamento simulado nesta etapa conforme especificação do projeto.
- * Não realiza chamadas para APIs de IA (Gemini), OCR ou banco de dados.
- * Os timers são controlados e rigorosamente cancelados na desmontagem do componente.
- */
+import type { StudyPage } from "@/types/study";
+import type {
+  PageAnalysis,
+  PageProcessingError,
+  StudyAnalysis,
+} from "@/lib/ai/schema";
+import { consolidateStudyResults } from "@/lib/ai/schema";
 
 interface StudyProcessingViewProps {
-  pagesCount: number;
+  pages: StudyPage[];
   studyTitle?: string;
-  onComplete: () => void;
-  onCancel?: () => void;
+  onComplete: (analysis: StudyAnalysis) => void;
+  onCancel: () => void;
+}
+
+interface ProviderInfo {
+  activeProvider: string;
+  activeModel: string;
+  supportsVision: boolean;
 }
 
 export function StudyProcessingView({
-  pagesCount,
+  pages,
   studyTitle,
   onComplete,
   onCancel,
 }: StudyProcessingViewProps) {
-  const [progress, setProgress] = useState<number>(0);
-  const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
-  const [isCompleted, setIsCompleted] = useState<boolean>(false);
+  const [providerInfo, setProviderInfo] = useState<ProviderInfo | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>(
-    PREPARATION_STEPS[0].inProgressMessage
+    "Verificando o provider configurado..."
+  );
+  const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
+  const [completedAnalyses, setCompletedAnalyses] = useState<PageAnalysis[]>([]);
+  const [pageErrors, setPageErrors] = useState<PageProcessingError[]>([]);
+  const [isProcessing, setIsProcessing] = useState<boolean>(true);
+  const [isCanceled, setIsCanceled] = useState<boolean>(false);
+  const [fatalError, setFatalError] = useState<string | null>(null);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const totalPages = pages.length;
+
+  // 1. Iniciar ou continuar processamento real página por página
+  const startProcessingFrom = useCallback(
+    async (startIndex: number, existingAnalyses: PageAnalysis[], existingErrors: PageProcessingError[]) => {
+      setIsProcessing(true);
+      setIsCanceled(false);
+      setFatalError(null);
+
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      try {
+        // Passo 1: Obter e validar o provedor configurado
+        setStatusMessage("Verificando o provider configurado...");
+        const settingsRes = await fetch("/api/settings/ai", {
+          signal: abortController.signal,
+        });
+
+        if (!settingsRes.ok) {
+          throw new Error("Não foi possível conectar ao subsistema de IA.");
+        }
+
+        const settingsData = await settingsRes.json();
+        const pInfo: ProviderInfo = {
+          activeProvider: settingsData.activeProvider || "mock",
+          activeModel: settingsData.activeModel || "modelo padrão",
+          supportsVision: Boolean(settingsData.supportsVision),
+        };
+        setProviderInfo(pInfo);
+
+        if (!pInfo.supportsVision) {
+          setFatalError(
+            "O modelo selecionado não possui suporte para leitura de imagens. Alterne o modelo nas configurações de IA."
+          );
+          setIsProcessing(false);
+          return;
+        }
+
+        const currentAnalyses = [...existingAnalyses];
+        const currentErrors = [...existingErrors];
+
+        // Passo 2: Processar sequencialmente cada página
+        for (let i = startIndex; i < totalPages; i++) {
+          if (abortController.signal.aborted) {
+            break;
+          }
+
+          const pageNumber = i + 1;
+          const pageItem = pages[i];
+          setCurrentPageIndex(i);
+          setStatusMessage(`Lendo a página ${pageNumber} de ${totalPages}...`);
+
+          // Executar chamada à rota individual /api/ai/analyze-page
+          try {
+            const formData = new FormData();
+            formData.append("file", pageItem.file);
+            formData.append("pageNumber", String(pageNumber));
+
+            const response = await fetch("/api/ai/analyze-page", {
+              method: "POST",
+              body: formData,
+              signal: abortController.signal,
+            });
+
+            if (!response.ok) {
+              const errBody = await response.json().catch(() => ({}));
+              const errMessage =
+                errBody?.error?.message || `Erro HTTP ${response.status} ao processar página ${pageNumber}`;
+              const errCode = errBody?.error?.code || "PAGE_ERROR";
+
+              // Registrar erro individual sem quebrar as outras páginas
+              currentErrors.push({
+                pageNumber,
+                code: errCode,
+                message: errMessage,
+              });
+              setPageErrors([...currentErrors]);
+              setStatusMessage(`Página ${pageNumber} apresentou falha: ${errMessage}`);
+            } else {
+              const resJson = await response.json();
+              if (resJson.success && resJson.data) {
+                currentAnalyses.push(resJson.data);
+                setCompletedAnalyses([...currentAnalyses]);
+                setStatusMessage(`Página ${pageNumber} concluída.`);
+              }
+            }
+          } catch (err: unknown) {
+            if (abortController.signal.aborted) {
+              break;
+            }
+            const message = err instanceof Error ? err.message : String(err);
+            currentErrors.push({
+              pageNumber,
+              code: "NETWORK_ERROR",
+              message,
+            });
+            setPageErrors([...currentErrors]);
+            setStatusMessage(`Erro de rede na página ${pageNumber}.`);
+          }
+
+          // Breve pausa para garantir sequência fluida e não sobrecarregar
+          if (i + 1 < totalPages && !abortController.signal.aborted) {
+            await new Promise((r) => setTimeout(r, 400));
+          }
+        }
+
+        // Passo 3: Conclusão se não foi cancelado
+        if (!abortController.signal.aborted) {
+          setStatusMessage("Consolidando resultados da leitura...");
+          const consolidated = consolidateStudyResults(totalPages, currentAnalyses, currentErrors);
+
+          // Breve celebração e avanço
+          setTimeout(() => {
+            onComplete(consolidated);
+          }, 600);
+        }
+      } catch (err: unknown) {
+        if (!abortController.signal.aborted) {
+          setFatalError(
+            err instanceof Error
+              ? err.message
+              : "Não foi possível conectar ao modelo configurado. Verifique o provider e tente novamente nas configurações de IA."
+          );
+        }
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [pages, totalPages, onComplete]
   );
 
-  // Referência para controlar todos os timers ativos e prevenir vazamento de memória
-  const timersRef = useRef<NodeJS.Timeout[]>([]);
-
-  const clearAllTimers = () => {
-    timersRef.current.forEach((timer) => clearTimeout(timer));
-    timersRef.current = [];
-  };
-
   useEffect(() => {
-    // Configura o ciclo progressivo das 4 etapas
-    // Etapa 1: 0% -> 25%
-    // Etapa 2: 25% -> 50%
-    // Etapa 3: 50% -> 75%
-    // Etapa 4: 75% -> 100%
-
-    // Intervalo de animação fluida da barra de progresso
-    let currentVal = 0;
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        // Incrementos graduais
-        if (prev < 25) {
-          currentVal = Math.min(25, prev + 2);
-          setCurrentStepIndex(0);
-          setStatusMessage(PREPARATION_STEPS[0].inProgressMessage);
-        } else if (prev < 50) {
-          currentVal = Math.min(50, prev + 2);
-          setCurrentStepIndex(1);
-          setStatusMessage(PREPARATION_STEPS[1].inProgressMessage);
-        } else if (prev < 75) {
-          currentVal = Math.min(75, prev + 2);
-          setCurrentStepIndex(2);
-          setStatusMessage(PREPARATION_STEPS[2].inProgressMessage);
-        } else if (prev < 100) {
-          currentVal = Math.min(100, prev + 2);
-          setCurrentStepIndex(3);
-          setStatusMessage(PREPARATION_STEPS[3].inProgressMessage);
-        } else {
-          currentVal = 100;
-        }
-
-        if (currentVal >= 100) {
-          clearInterval(progressInterval);
-          setIsCompleted(true);
-          setStatusMessage(STUDY_MESSAGES.COMPLETED_SUBTITLE);
-
-          // Transição automática suave para o ambiente de estudo após breve celebração
-          const completeTimeout = setTimeout(() => {
-            onComplete();
-          }, 850);
-          timersRef.current.push(completeTimeout);
-        }
-
-        return currentVal;
-      });
-    }, 80);
-
-    timersRef.current.push(progressInterval as unknown as NodeJS.Timeout);
+    startProcessingFrom(0, [], []);
 
     return () => {
-      clearInterval(progressInterval);
-      clearAllTimers();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
-  }, [onComplete]);
+  }, [startProcessingFrom]);
 
-  // Determinar o estado de cada etapa (waiting, in_progress, completed)
-  const getStepState = (index: number): PreparationStepState => {
-    if (isCompleted || index < currentStepIndex) return "completed";
-    if (index === currentStepIndex) return "in_progress";
-    return "waiting";
+  // Cancelamento pelo usuário
+  const handleCancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsProcessing(false);
+    setIsCanceled(true);
+    setStatusMessage("Processamento interrompido pelo usuário.");
   };
+
+  // Continuar processamento de onde parou
+  const handleResume = () => {
+    const nextIndex = completedAnalyses.length + pageErrors.length;
+    if (nextIndex < totalPages) {
+      startProcessingFrom(nextIndex, completedAnalyses, pageErrors);
+    } else {
+      // Se já estava no final, apenas consolida
+      const consolidated = consolidateStudyResults(totalPages, completedAnalyses, pageErrors);
+      onComplete(consolidated);
+    }
+  };
+
+  // Reiniciar do zero
+  const handleRestart = () => {
+    setCompletedAnalyses([]);
+    setPageErrors([]);
+    startProcessingFrom(0, [], []);
+  };
+
+  // Cálculo percentual real
+  const processedCount = completedAnalyses.length + pageErrors.length;
+  const progressPercent = totalPages > 0 ? Math.round((processedCount / totalPages) * 100) : 0;
 
   return (
     <div className="w-full max-w-[680px] mx-auto animate-in fade-in duration-300">
       <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl shadow-indigo-950/5 dark:shadow-black/50 p-5 sm:p-8 space-y-6">
         
-        {/* Cabeçalho do Processamento */}
+        {/* Cabeçalho */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200/80 dark:border-indigo-800 text-xs font-semibold text-indigo-700 dark:text-indigo-300 shadow-2xs">
             <Layers className="w-3.5 h-3.5" aria-hidden="true" />
             <span>
-              {pagesCount} {pagesCount === 1 ? "página selecionada" : "páginas selecionadas"}
+              {totalPages} {totalPages === 1 ? "página em processamento" : "páginas em processamento"}
             </span>
           </div>
 
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-            {isCompleted ? STUDY_MESSAGES.COMPLETED_TITLE : STUDY_MESSAGES.PROCESSING_TITLE}
+            Leitura Inteligente das Páginas
           </h2>
 
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-md mx-auto leading-relaxed">
-            {isCompleted
-              ? STUDY_MESSAGES.COMPLETED_SUBTITLE
-              : STUDY_MESSAGES.PROCESSING_SUBTITLE}
+            Extraindo textos, títulos, fórmulas e conceitos utilizando o modelo multimodal configurado.
           </p>
 
-          {studyTitle && (
-            <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium italic pt-1 truncate max-w-sm mx-auto">
-              &ldquo;{studyTitle}&rdquo;
-            </p>
+          {providerInfo && (
+            <div className="flex items-center justify-center gap-2 text-xs pt-1 font-mono text-slate-500 dark:text-slate-400">
+              <Bot className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>
+                {providerInfo.activeProvider.toUpperCase()} • {providerInfo.activeModel}
+              </span>
+            </div>
           )}
         </div>
 
-        {/* Barra de Progresso com Indicador Numérico */}
-        <div className="space-y-2 bg-slate-50 dark:bg-slate-950/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
-            <span className="flex items-center gap-1.5">
-              {!isCompleted ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400 motion-reduce:animate-none" aria-hidden="true" />
-              ) : (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-              )}
-              <span className="truncate max-w-[240px] sm:max-w-md">{statusMessage}</span>
-            </span>
-            <span className="tabular-nums font-bold text-indigo-600 dark:text-indigo-400 text-sm">
-              {progress}%
-            </span>
-          </div>
-
-          {/* Barra Visual */}
-          <div
-            role="progressbar"
-            aria-valuenow={progress}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Progresso da preparação do material"
-            className="w-full h-2.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden p-0.5"
-          >
-            <div
-              className={`h-full rounded-full transition-all duration-150 ease-out ${
-                isCompleted
-                  ? "bg-emerald-500 shadow-sm shadow-emerald-500/30"
-                  : "bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-500 shadow-sm shadow-indigo-500/30"
-              } motion-reduce:transition-none`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Anúncio acessível para leitores de tela */}
-        <div className="sr-only" aria-live="polite">
-          Progresso: {progress} por cento. {statusMessage}.
-        </div>
-
-        {/* Lista das 4 Etapas com estados visuais */}
-        <div className="space-y-2.5">
-          {PREPARATION_STEPS.map((step, idx) => {
-            const state = getStepState(idx);
-            const isCurrent = state === "in_progress";
-            const isDone = state === "completed";
-            const isPending = state === "waiting";
-
-            return (
-              <div
-                key={step.id}
-                className={`flex items-center justify-between p-3 sm:p-3.5 rounded-2xl border transition-all duration-200 ${
-                  isCurrent
-                    ? "bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800 ring-2 ring-indigo-200/50 dark:ring-indigo-950/50"
-                    : isDone
-                    ? "bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-900/40 text-slate-800 dark:text-slate-200"
-                    : "bg-slate-50/60 dark:bg-slate-950/30 border-slate-200/60 dark:border-slate-800/60 text-slate-400 dark:text-slate-600 opacity-70"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  {/* Ícone de Estado */}
-                  <div className="shrink-0 flex items-center justify-center w-7 h-7 rounded-xl">
-                    {isDone && (
-                      <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                        <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
-                      </div>
-                    )}
-                    {isCurrent && (
-                      <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                        <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                      </div>
-                    )}
-                    {isPending && (
-                      <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 flex items-center justify-center">
-                        <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Textos da Etapa */}
-                  <div className="space-y-0.5">
-                    <span
-                      className={`text-xs sm:text-sm font-semibold block ${
-                        isCurrent
-                          ? "text-indigo-950 dark:text-indigo-200"
-                          : isDone
-                          ? "text-slate-800 dark:text-slate-200"
-                          : "text-slate-400 dark:text-slate-500"
-                      }`}
-                    >
-                      {step.title}
-                    </span>
-                    <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 block">
-                      {isDone
-                        ? step.completedMessage
-                        : isCurrent
-                        ? step.inProgressMessage
-                        : `Aguardando etapa anterior (${step.startProgress}%)`}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Badge de status lateral */}
-                <div className="shrink-0 pl-2">
-                  {isDone && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                      Concluída
-                    </span>
-                  )}
-                  {isCurrent && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                      Em andamento
-                    </span>
-                  )}
-                  {isPending && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500">
-                      Aguardando
-                    </span>
-                  )}
-                </div>
+        {/* Estado de Erro Fatal / Provider Indisponível */}
+        {fatalError && (
+          <div className="rounded-2xl p-5 bg-rose-50/80 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 space-y-3 animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-rose-950 dark:text-rose-100">
+                  Não foi possível conectar ao modelo configurado
+                </h4>
+                <p className="text-xs text-rose-900 dark:text-rose-300 leading-relaxed">
+                  {fatalError}
+                </p>
+                <p className="text-[11px] text-rose-800 dark:text-rose-400">
+                  Verifique o provider e tente novamente nas configurações de IA.
+                </p>
               </div>
-            );
-          })}
-        </div>
+            </div>
 
-        {/* Rodapé do Processamento: Ação imediata caso concluído ou botão de retorno */}
-        {isCompleted && (
-          <div className="pt-2 flex justify-center animate-in fade-in duration-200">
-            <button
-              type="button"
-              onClick={onComplete}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 transition cursor-pointer active:scale-98"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Acessar ambiente preparado</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            <div className="pt-2 flex flex-wrap items-center gap-2 border-t border-rose-200/60 dark:border-rose-900/60">
+              <button
+                type="button"
+                onClick={handleRestart}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 transition cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Tentar novamente</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onCancel}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Voltar às páginas</span>
+              </button>
+
+              <Link
+                href="/configuracoes/ia"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Ir para configurações de IA</span>
+              </Link>
+            </div>
           </div>
         )}
 
-        {/* Nota explicativa de simulação segura */}
-        <p className="text-center text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-          Simulação de preparação • Seus arquivos permanecem seguros no navegador.
-        </p>
+        {/* Barra de Progresso Real */}
+        {!fatalError && (
+          <div className="space-y-2 bg-slate-50 dark:bg-slate-950/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <span className="flex items-center gap-1.5">
+                {isProcessing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400 motion-reduce:animate-none" />
+                ) : isCanceled ? (
+                  <FileWarning className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                )}
+                <span className="truncate max-w-[240px] sm:max-w-md">{statusMessage}</span>
+              </span>
+              <span className="tabular-nums font-bold text-indigo-600 dark:text-indigo-400 text-sm">
+                {progressPercent}%
+              </span>
+            </div>
+
+            {/* Barra Visual */}
+            <div
+              role="progressbar"
+              aria-valuenow={progressPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="w-full h-2.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden p-0.5"
+            >
+              <div
+                className="h-full rounded-full transition-all duration-300 ease-out bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-500 shadow-sm shadow-indigo-500/30"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+
+            {/* Contadores */}
+            <div className="pt-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+              <span>
+                {completedAnalyses.length} de {totalPages} concluídas
+              </span>
+              {pageErrors.length > 0 && (
+                <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                  {pageErrors.length} com falha
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Anúncio de Acessibilidade */}
+        <div className="sr-only" aria-live="polite">
+          {statusMessage} Progresso atual: {progressPercent}%.
+        </div>
+
+        {/* Estado Interrompido / Cancelado */}
+        {isCanceled && (
+          <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-center space-y-3 animate-in fade-in">
+            <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+              Processamento pausado. As {completedAnalyses.length} páginas já lidas foram preservadas.
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={handleResume}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Continuar leitura</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleRestart}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 transition cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Recomeçar</span>
+              </button>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Voltar às páginas</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Botão de Cancelamento em Tempo Real */}
+        {isProcessing && !fatalError && (
+          <div className="pt-2 flex justify-center">
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border border-slate-200 dark:border-slate-800 transition cursor-pointer"
+            >
+              <Square className="w-3 h-3 fill-current" />
+              <span>Cancelar processamento</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

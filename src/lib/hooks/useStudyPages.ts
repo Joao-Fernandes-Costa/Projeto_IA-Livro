@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { StudyPage, HomeViewMode } from "@/types/study";
+import type { StudyAnalysis } from "@/types/ai";
 import {
   MAX_PAGES_PER_STUDY,
   MAX_FILE_SIZE_BYTES,
@@ -21,6 +22,7 @@ export function useStudyPages() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState("");
   const [createdStudyId, setCreatedStudyId] = useState<string | null>(null);
+  const [studyAnalysis, setStudyAnalysis] = useState<StudyAnalysis | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -163,6 +165,7 @@ export function useStudyPages() {
     setIsSubmitted(false);
     setIsProcessing(false);
     setCreatedStudyId(null);
+    setStudyAnalysis(null);
     setErrorMessage(null);
     setViewMode("composer");
   };
@@ -239,9 +242,10 @@ export function useStudyPages() {
     setViewMode("processing");
   };
 
-  const handleProcessingComplete = () => {
+  const handleProcessingComplete = (analysis: StudyAnalysis) => {
     const newId = `estudo-${Date.now().toString(36)}`;
     setCreatedStudyId(newId);
+    setStudyAnalysis(analysis);
     setIsProcessing(false);
     setIsSubmitted(true);
     setViewMode("workspace_preview");
@@ -256,6 +260,7 @@ export function useStudyPages() {
     setIsSubmitted(false);
     setIsProcessing(false);
     setCreatedStudyId(null);
+    setStudyAnalysis(null);
     setViewMode("composer");
   };
 
@@ -279,6 +284,7 @@ export function useStudyPages() {
     isProcessing,
     processingStep,
     createdStudyId,
+    studyAnalysis,
     startStudy,
     handleProcessingComplete,
     handleBackToPages,

@@ -6,6 +6,7 @@ import {
   AnalyzePageResult,
 } from "@/types/ai";
 import { checkVisionSupport, checkStructuredOutputSupport } from "./provider";
+import { MULTIMODAL_PAGE_READING_PROMPT, parseAndValidatePageAnalysis } from "./schema";
 
 export class GeminiAIProvider implements AIProvider {
   public readonly name: AIProviderName = "gemini";
@@ -21,7 +22,6 @@ export class GeminiAIProvider implements AIProvider {
     const supportsVision = checkVisionSupport(this.model);
     const supportsStructuredOutput = checkStructuredOutputSupport("gemini", this.model);
 
-    // 1. Validar presença da API key
     if (!this.apiKey) {
       return {
         success: false,
@@ -37,7 +37,6 @@ export class GeminiAIProvider implements AIProvider {
     const timeout = setTimeout(() => controller.abort(), 7000);
 
     try {
-      // 2. Testar autenticação através do endpoint de listagem de modelos da Google Generative AI API
       const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(this.apiKey)}`;
       const res = await fetch(url, {
         method: "GET",
@@ -53,7 +52,7 @@ export class GeminiAIProvider implements AIProvider {
           model: this.model,
           supportsVision,
           supportsStructuredOutput,
-          message: "Chave de API do Google Gemini inválida ou sem permissão de acesso.",
+          message: "Chave de API do Google Gemini inválida ou não autorizada.",
         };
       }
 
@@ -83,7 +82,6 @@ export class GeminiAIProvider implements AIProvider {
       const modelsList: Array<{ name?: string }> = Array.isArray(data.models) ? data.models : [];
       const cleanModelName = this.model.replace(/^models\//, "").toLowerCase();
 
-      // Verificar se o modelo selecionado existe na conta
       const modelExists = modelsList.some((m) =>
         (m.name || "").toLowerCase().includes(cleanModelName)
       );
@@ -132,19 +130,106 @@ export class GeminiAIProvider implements AIProvider {
   }
 
   public async analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult> {
-    const health = await this.checkHealth();
-    if (!health.success) {
-      throw new Error(`Google Gemini indisponível: ${health.message}`);
+    if (!this.apiKey) {
+      const err = new Error("Chave de API do Google Gemini não configurada.");
+      (err as unknown as { code: string }).code = "API_KEY_MISSING";
+      throw err;
     }
 
-    return {
-      pageNumber: input.pageNumber,
-      extractedText: `[Texto extraído via Google Gemini ${this.model} - Página ${input.pageNumber}]`,
-      summary: `Resumo didático gerado pelo Google Gemini Flash para a página ${input.pageNumber}.`,
-      keyPoints: [
-        `Conceito 1 estruturado pelo Gemini para a página ${input.pageNumber}`,
-        `Conceito 2 detalhado para material de estudo`,
-      ],
-    };
+    const mime = input.mimeType || "image/jpeg";
+    const rawBase64 = input.imageBase64
+      ? input.imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, "")
+      : input.imageBuffer
+      ? input.imageBuffer.toString("base64")
+      : "";
+
+    if (!rawBase64 || rawBase64.length < 50) {
+      throw new Error("Dados da imagem inválidos ou corrompidos para leitura no Gemini.");
+    }
+
+    const cleanModel = this.model.replace(/^models\//, "");
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(
+      this.apiKey
+    )}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `${MULTIMODAL_PAGE_READING_PROMPT}\n\nPágina atual do livro: ${input.pageNumber}`,
+                },
+                {
+                  inline_data: {
+                    mime_type: mime,
+                    data: rawBase64,
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            response_mime_type: "application/json",
+            temperature: 0.1,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        const errMessage = errorJson?.error?.message || res.statusText;
+
+        if (
+          res.status === 400 &&
+          (errMessage.toLowerCase().includes("inline_data") ||
+            errMessage.toLowerCase().includes("vision") ||
+            errMessage.toLowerCase().includes("image"))
+        ) {
+          const err = new Error("O modelo selecionado não possui suporte para leitura de imagens.");
+          (err as unknown as { code: string }).code = "VISION_NOT_SUPPORTED";
+          throw err;
+        }
+
+        if (res.status === 400 || res.status === 403) {
+          const err = new Error("Chave de API do Google Gemini inválida ou não autorizada.");
+          (err as unknown as { code: string }).code = "API_KEY_INVALID";
+          throw err;
+        }
+
+        if (res.status === 429) {
+          const err = new Error("Limite de cota excedido no Google AI Studio (Erro 429).");
+          (err as unknown as { code: string }).code = "RATE_LIMIT_EXCEEDED";
+          throw err;
+        }
+
+        throw new Error(`Google Gemini erro HTTP ${res.status}: ${errMessage}`);
+      }
+
+      const json = await res.json();
+      const content =
+        json.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      return parseAndValidatePageAnalysis(content, input.pageNumber);
+    } catch (err: unknown) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === "AbortError") {
+        const timeoutErr = new Error("A leitura da página excedeu o tempo máximo no Google Gemini.");
+        (timeoutErr as unknown as { code: string }).code = "MODEL_TIMEOUT";
+        throw timeoutErr;
+      }
+      throw err;
+    }
   }
 }

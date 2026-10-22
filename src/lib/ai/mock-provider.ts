@@ -8,6 +8,7 @@ import {
   AIAnalysisRequest,
 } from "@/types/ai";
 import { AIStudyResult } from "@/types/study";
+import { PageAnalysisSchema } from "./schema";
 
 export class MockAIProvider implements AIProvider, IAIProvider {
   public readonly name: AIProviderName = "mock";
@@ -30,16 +31,53 @@ export class MockAIProvider implements AIProvider, IAIProvider {
   }
 
   public async analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult> {
-    return {
+    const hasData = Boolean(
+      (input.imageBase64 && input.imageBase64.trim().length > 0) ||
+      (input.imageBuffer && input.imageBuffer.length > 0)
+    );
+    if (!hasData) {
+      throw new Error(`Dados de imagem ausentes ou corrompidos para a página ${input.pageNumber}.`);
+    }
+
+    // Simulação com pequeno atraso natural de processamento de imagem (~400ms)
+    await new Promise((r) => setTimeout(r, 400));
+
+    const analysis = {
       pageNumber: input.pageNumber,
-      extractedText: `[Texto Simulado da Página ${input.pageNumber}] Conteúdo didático extraído com fidelidade a partir do material de estudo.`,
-      summary: `Resumo simulado dos conceitos e fundamentos apresentados na página ${input.pageNumber}.`,
-      keyPoints: [
-        `Ponto essencial ${input.pageNumber}.1: Fundamentos teóricos e conceitos principais.`,
-        `Ponto essencial ${input.pageNumber}.2: Aplicações práticas e conexões interdisciplinares.`,
-        `Ponto essencial ${input.pageNumber}.3: Exemplos contextualizados para fixação.`,
+      title: `Capítulo ${input.pageNumber}: Leitura e Fundamentos`,
+      extractedText: `1. PRINCÍPIOS FUNDAMENTAIS - PÁGINA ${input.pageNumber}
+
+Nesta página ${input.pageNumber}, são apresentados os conceitos centrais do conteúdo do livro físico. O texto aborda os fundamentos teóricos com definições claras, termos técnicos e relações de causa e efeito essenciais para a compreensão do assunto.
+
+Tópicos abordados:
+- Definição estruturada dos conceitos principais;
+- Relação entre teoria e prática no contexto do capítulo;
+- Exemplos práticos para fixação e revisão.
+
+Conclusão da página:
+Os elementos discutidos preparam a base para o aprofundamento das próximas etapas do material de estudo.`,
+      sections: [
+        {
+          title: "1. Introdução Teórica",
+          content: `Apresentação dos princípios fundamentais da página ${input.pageNumber}.`,
+        },
+        {
+          title: "2. Aplicação e Exemplos",
+          content: "Contextualização dos conceitos essenciais e termos técnicos.",
+        },
       ],
+      summary: `Síntese da página ${input.pageNumber}: conceitos estruturados, definições essenciais e exemplos didáticos extraídos da página.`,
+      importantConcepts: [
+        "Fundamentação teórica",
+        "Termos técnicos essenciais",
+        "Leitura contextualizada",
+        `Conceito-Chave ${input.pageNumber}`,
+      ],
+      formulasOrTables: [],
+      confidence: 0.96,
     };
+
+    return PageAnalysisSchema.parse(analysis);
   }
 
   public async analyzePages(request: AIAnalysisRequest): Promise<AIStudyResult> {
@@ -53,7 +91,7 @@ export class MockAIProvider implements AIProvider, IAIProvider {
       lecture: {
         title: `Aula Didática: ${title}`,
         summary: `Visão geral estruturada sobre ${title}, cobrindo os pontos essenciais das ${pageCount} páginas fornecidas.`,
-        script: `Olá! Hoje vamos estudar ${title}. Este material aborda os conceitos essenciais extraídos diretamente do seu livro físico. Vamos passar por cada etapa de forma clara e objetiva.`,
+        script: `Olá! Hoje vamos estudar ${title}. Este material aborda os conceitos essenciais extraídos diretamente do seu livro físico.`,
         slides: request.pages.map((p, idx) => ({
           pageNumber: idx + 1,
           title: `Tópico ${idx + 1}: ${p.name || `Página ${idx + 1}`}`,
@@ -78,19 +116,6 @@ export class MockAIProvider implements AIProvider, IAIProvider {
           answerIndex: 0,
           explanation: "O material enfatiza a construção sequencial do conhecimento com base nas páginas do livro.",
           pageReference: 1,
-        },
-        {
-          id: "q2",
-          question: "Como o conteúdo apresentado pode ser aplicado na prática?",
-          options: [
-            "Por meio de exercícios estruturados e resolução de problemas reais",
-            "Apenas através de memorização passiva",
-            "Sem qualquer aplicação no mundo real",
-            "Exclusivamente por leitura rápida",
-          ],
-          answerIndex: 0,
-          explanation: "A aplicação prática requer resolução ativa e conexão direta com os conceitos.",
-          pageReference: Math.min(2, pageCount),
         },
       ],
       processedAt: new Date().toISOString(),

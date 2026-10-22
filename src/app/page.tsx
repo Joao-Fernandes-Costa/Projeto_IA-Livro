@@ -33,6 +33,7 @@ export default function HomePage() {
     isProcessing,
     processingStep,
     createdStudyId,
+    studyAnalysis,
     startStudy,
     handleProcessingComplete,
     handleBackToPages,
@@ -144,21 +145,22 @@ export default function HomePage() {
             </>
           )}
 
-          {/* ESTADO 2: Processamento Simulado em 4 Etapas */}
+          {/* ESTADO 2: Leitura Real das Páginas com IA Multimodal */}
           {viewMode === "processing" && (
             <StudyProcessingView
-              pagesCount={pages.length}
+              pages={pages}
               studyTitle={studyTitle}
               onComplete={handleProcessingComplete}
               onCancel={handleBackToPages}
             />
           )}
 
-          {/* ESTADO 3: Prévia do Ambiente de Estudo (Workspace) */}
+          {/* ESTADO 3: Prévia do Ambiente de Estudo com Resultados Reais */}
           {viewMode === "workspace_preview" && (
             <StudyWorkspacePreview
               pages={pages}
               studyTitle={studyTitle}
+              analysis={studyAnalysis}
               onBackToPages={handleBackToPages}
             />
           )}

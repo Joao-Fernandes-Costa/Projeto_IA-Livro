@@ -7,3 +7,4 @@ export * from "./openrouter-provider";
 export * from "./openai-provider";
 export * from "./gemini-provider";
 export * from "./custom-openai-provider";
+export * from "./schema";

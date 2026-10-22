@@ -1,3 +1,5 @@
+import type { StudyAnalysis } from "./ai";
+
 export type RotationDegree = 0 | 90 | 180 | 270;
 
 export interface StudyPage {
@@ -75,6 +77,7 @@ export interface StudySession {
   pages: StudyPage[];
   status: ProcessingStatus;
   result?: AIStudyResult;
+  analysis?: StudyAnalysis;
   createdAt: number;
   updatedAt: number;
 }

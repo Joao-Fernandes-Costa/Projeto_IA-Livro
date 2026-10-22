@@ -6,6 +6,7 @@ import {
   AnalyzePageResult,
 } from "@/types/ai";
 import { checkVisionSupport, checkStructuredOutputSupport, validateBaseUrl } from "./provider";
+import { MULTIMODAL_PAGE_READING_PROMPT, parseAndValidatePageAnalysis } from "./schema";
 
 export class OpenRouterAIProvider implements AIProvider {
   public readonly name: AIProviderName = "openrouter";
@@ -28,7 +29,6 @@ export class OpenRouterAIProvider implements AIProvider {
     const supportsVision = checkVisionSupport(this.model);
     const supportsStructuredOutput = checkStructuredOutputSupport("openrouter", this.model);
 
-    // 1. Verificar presença da chave de API
     if (!this.apiKey) {
       return {
         success: false,
@@ -56,7 +56,6 @@ export class OpenRouterAIProvider implements AIProvider {
     const timeout = setTimeout(() => controller.abort(), 7000);
 
     try {
-      // 2. Testar autenticação através do endpoint de validação de chave do OpenRouter
       const res = await fetch(`${this.baseUrl}/auth/key`, {
         method: "GET",
         headers: {
@@ -89,26 +88,6 @@ export class OpenRouterAIProvider implements AIProvider {
           supportsStructuredOutput,
           message: "Limite de requisições excedido ou créditos insuficientes na conta do OpenRouter.",
         };
-      }
-
-      if (!res.ok) {
-        // Tentar endpoint alternativo /models caso /auth/key não esteja liberado
-        const altRes = await fetch(`${this.baseUrl}/models`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-          },
-        });
-        if (!altRes.ok) {
-          return {
-            success: false,
-            provider: "openrouter",
-            model: this.model,
-            supportsVision,
-            supportsStructuredOutput,
-            message: `OpenRouter respondeu com erro HTTP ${res.status}: ${res.statusText}`,
-          };
-        }
       }
 
       if (!supportsVision) {
@@ -155,21 +134,102 @@ export class OpenRouterAIProvider implements AIProvider {
   }
 
   public async analyzePage(input: AnalyzePageInput): Promise<AnalyzePageResult> {
-    const health = await this.checkHealth();
-    if (!health.success) {
-      throw new Error(`OpenRouter indisponível: ${health.message}`);
-    }
-    if (!health.supportsVision) {
-      throw new Error("O modelo selecionado não possui suporte para imagens e não pode ler páginas de livros.");
+    if (!this.apiKey) {
+      const err = new Error("Chave de API do OpenRouter não configurada.");
+      (err as unknown as { code: string }).code = "API_KEY_MISSING";
+      throw err;
     }
 
-    return {
-      pageNumber: input.pageNumber,
-      extractedText: `[Texto extraído via OpenRouter (${this.model}) - Página ${input.pageNumber}]`,
-      summary: `Resumo gerado pelo OpenRouter utilizando o modelo ${this.model}.`,
-      keyPoints: [
-        `Ponto essencial da página ${input.pageNumber} sintetizado pelo OpenRouter.`,
-      ],
-    };
+    const mime = input.mimeType || "image/jpeg";
+    const dataUrl = input.imageBase64?.startsWith("data:")
+      ? input.imageBase64
+      : `data:${mime};base64,${input.imageBase64 || input.imageBuffer?.toString("base64") || ""}`;
+
+    if (!dataUrl || dataUrl.length < 50) {
+      throw new Error("Dados da imagem inválidos ou corrompidos.");
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    try {
+      const res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+          "HTTP-Referer": "https://estudaia.local",
+          "X-Title": "EstudaIA",
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `${MULTIMODAL_PAGE_READING_PROMPT}\n\nPágina atual do livro: ${input.pageNumber}`,
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: dataUrl,
+                  },
+                },
+              ],
+            },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        const errMessage = errorJson?.error?.message || res.statusText;
+
+        if (
+          res.status === 400 &&
+          (errMessage.toLowerCase().includes("image") ||
+            errMessage.toLowerCase().includes("vision") ||
+            errMessage.toLowerCase().includes("multimodal"))
+        ) {
+          const err = new Error("O modelo selecionado não possui suporte para leitura de imagens.");
+          (err as unknown as { code: string }).code = "VISION_NOT_SUPPORTED";
+          throw err;
+        }
+
+        if (res.status === 401) {
+          const err = new Error("Chave de API do OpenRouter inválida.");
+          (err as unknown as { code: string }).code = "API_KEY_INVALID";
+          throw err;
+        }
+
+        if (res.status === 429) {
+          const err = new Error("Limite de requisições excedido no OpenRouter.");
+          (err as unknown as { code: string }).code = "RATE_LIMIT_EXCEEDED";
+          throw err;
+        }
+
+        throw new Error(`OpenRouter erro HTTP ${res.status}: ${errMessage}`);
+      }
+
+      const json = await res.json();
+      const content = json.choices?.[0]?.message?.content || "";
+
+      return parseAndValidatePageAnalysis(content, input.pageNumber);
+    } catch (err: unknown) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === "AbortError") {
+        const timeoutErr = new Error("A leitura da página excedeu o tempo máximo no OpenRouter.");
+        (timeoutErr as unknown as { code: string }).code = "MODEL_TIMEOUT";
+        throw timeoutErr;
+      }
+      throw err;
+    }
   }
 }
