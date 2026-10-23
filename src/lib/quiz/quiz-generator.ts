@@ -235,11 +235,21 @@ Lembre-se de retornar APENAS o JSON estruturado conforme orientado.`;
       if (!apiKey && process.env.OPENROUTER_API_KEY) {
         apiKey = process.env.OPENROUTER_API_KEY;
       }
+      if (!apiKey) {
+        throw new Error(
+          "Chave de API do OpenRouter não configurada. Configure a API key no painel de configurações para utilizar este provedor."
+        );
+      }
     } else if (provider.name === "openai") {
       baseUrl = baseUrl || "https://api.openai.com/v1";
       model = model || "gpt-4o-mini";
       if (!apiKey && process.env.OPENAI_API_KEY) {
         apiKey = process.env.OPENAI_API_KEY;
+      }
+      if (!apiKey) {
+        throw new Error(
+          "Chave de API da OpenAI não configurada. Configure a API key no painel de configurações para utilizar este provedor."
+        );
       }
     }
 

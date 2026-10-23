@@ -15,6 +15,7 @@ export class OpenRouterAIProvider implements AIProvider {
   private baseUrl: string;
   private model: string;
   private apiKey?: string;
+  private explicitApiKeyProvided: boolean = false;
 
   constructor(
     baseUrl: string = "https://openrouter.ai/api/v1",
@@ -24,10 +25,11 @@ export class OpenRouterAIProvider implements AIProvider {
     const validated = validateBaseUrl(baseUrl);
     this.baseUrl = validated.valid && validated.normalized ? validated.normalized : baseUrl;
     this.model = model.trim() || "google/gemini-flash-1.5";
+    this.explicitApiKeyProvided = apiKey !== undefined;
     this.apiKey = apiKey?.trim();
 
     // Se apiKey não foi passada explicitamente, busca no SecretStore criptografado
-    if (!this.apiKey) {
+    if (!this.explicitApiKeyProvided) {
       const stored = SecretStore.getSecretSync("openrouter");
       if (stored) {
         if (stored.apiKey) this.apiKey = stored.apiKey;
@@ -42,8 +44,8 @@ export class OpenRouterAIProvider implements AIProvider {
   }
 
   public async checkHealth(): Promise<AIHealthResult> {
-    // Atualiza com SecretStore caso a chave tenha sido gravada após inicialização
-    if (!this.apiKey) {
+    // Atualiza com SecretStore apenas se a chave não foi informada explicitamente
+    if (!this.explicitApiKeyProvided && !this.apiKey) {
       const stored = SecretStore.getSecretSync("openrouter");
       if (stored?.apiKey) {
         this.apiKey = stored.apiKey;

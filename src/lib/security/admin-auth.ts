@@ -175,6 +175,18 @@ export async function requireAdminSession(): Promise<boolean> {
 }
 
 /**
+ * Retorna os dados da sessão administrativa se autenticada.
+ */
+export async function getAdminSessionInfo(): Promise<{ authenticated: boolean; user: string } | null> {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get(ADMIN_COOKIE_NAME) || cookieStore.get("estudaia_admin_session");
+  if (verifySessionToken(sessionCookie?.value)) {
+    return { authenticated: true, user: "admin" };
+  }
+  return null;
+}
+
+/**
  * Configuração dos cookies de sessão
  */
 export function getAdminCookieOptions() {

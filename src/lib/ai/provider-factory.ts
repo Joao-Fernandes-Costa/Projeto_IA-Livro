@@ -16,9 +16,15 @@ export interface ProviderOverrides {
 }
 
 /**
- * Fábrica central de provedores de IA.
- * Garante que nenhuma parte do sistema instancie ou acesse diretamente
- * provedores externos sem passar pela resolução centralizada e segura.
+ * Fábrica central de provedores de IA do EstudeAI.
+ * 
+ * Regras estritas:
+ * 1. Resolve o provider na ordem:
+ *    - Configuração persistida pelo administrador (.data/ai-config.json)
+ *    - Variável de ambiente (AI_PROVIDER)
+ *    - OpenRouter como padrão final
+ * 2. NUNCA faz fallback silencioso para mock ou outro provedor se houver falha.
+ * 3. O MockProvider só é instanciado quando explicitamente configurado.
  */
 export class AIProviderFactory {
   public static getProvider(
@@ -36,12 +42,12 @@ export class AIProviderFactory {
     let provider: AIProvider;
 
     switch (targetName) {
-      case "ollama":
-        provider = new OllamaAIProvider(baseUrl, model);
-        break;
-
       case "openrouter":
         provider = new OpenRouterAIProvider(baseUrl, model, apiKey);
+        break;
+
+      case "ollama":
+        provider = new OllamaAIProvider(baseUrl, model);
         break;
 
       case "openai":
@@ -57,12 +63,15 @@ export class AIProviderFactory {
         break;
 
       case "mock":
-      default:
         provider = new MockAIProvider(model);
         break;
+
+      default:
+        // Caso um nome inválido seja passado, lança erro para não trocar silenciosamente
+        throw new Error(`Provedor de IA não suportado: "${targetName}".`);
     }
 
-    // Bridge de compatibilidade para IAIProvider caso o provider nativo ainda não possua analyzePages
+    // Bridge de compatibilidade estrita para IAIProvider
     const wrapped: AIProvider & IAIProvider = Object.assign(provider, {
       providerName: provider.name,
       async analyzePages(request: AIAnalysisRequest): Promise<AIStudyResult> {
@@ -70,7 +79,13 @@ export class AIProviderFactory {
           return (provider as unknown as IAIProvider).analyzePages(request);
         }
 
-        // Simulação segura baseada na resposta do provider ativo
+        // Proíbe fallback silencioso para mock se o provedor ativo não for mock
+        if (provider.name !== "mock") {
+          throw new Error(
+            `O provedor "${provider.name}" não implementa analyzePages legado. Utilize o fluxo sequencial oficial via /api/ai/process-study.`
+          );
+        }
+
         const mockFallback = new MockAIProvider(model);
         return mockFallback.analyzePages(request);
       },

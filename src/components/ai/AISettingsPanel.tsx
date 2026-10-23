@@ -9,6 +9,9 @@ import {
   AlertCircle,
   FileWarning,
   Loader2,
+  Info,
+  Clock,
+  Shield,
 } from "lucide-react";
 import type {
   AIProviderName,
@@ -21,8 +24,8 @@ import { ProviderForm } from "./ProviderForm";
 import { AudioSettingsSection } from "./AudioSettingsSection";
 
 const PROVIDER_ORDER: AIProviderName[] = [
-  "ollama",
   "openrouter",
+  "ollama",
   "openai",
   "gemini",
   "custom",
@@ -31,7 +34,7 @@ const PROVIDER_ORDER: AIProviderName[] = [
 
 export function AISettingsPanel() {
   const [settings, setSettings] = useState<AISettingsResponse | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<AIProviderName>("mock");
+  const [selectedProvider, setSelectedProvider] = useState<AIProviderName>("openrouter");
   const [isLoading, setIsLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -43,7 +46,7 @@ export function AISettingsPanel() {
       if (!res.ok) throw new Error("Erro ao carregar configurações");
       const data = (await res.json()) as AISettingsResponse;
       setSettings(data);
-      setSelectedProvider(data.activeProvider || "mock");
+      setSelectedProvider(data.activeProvider || "openrouter");
     } catch {
       setStatusMessage({
         type: "error",
@@ -71,7 +74,7 @@ export function AISettingsPanel() {
       setSelectedProvider(providerId);
       setStatusMessage({
         type: "success",
-        text: `Provedor ${data.data.providers[providerId]?.name || providerId} definido como ativo no EstudeAI!`,
+        text: `Provedor ${data.data.providers[providerId]?.name || providerId} definido e persistido como ativo no EstudeAI!`,
       });
       setTimeout(() => setStatusMessage(null), 4000);
     } catch {
@@ -118,9 +121,9 @@ export function AISettingsPanel() {
       setSettings(resData.data);
       setStatusMessage({
         type: "success",
-        text: "Configurações salvas no servidor com sucesso!",
+        text: "Configurações salvas e persistidas no servidor com sucesso!",
       });
-      setTimeout(() => setStatusMessage(null), 3000);
+      setTimeout(() => setStatusMessage(null), 3500);
     } catch (err: unknown) {
       setStatusMessage({
         type: "error",
@@ -159,7 +162,7 @@ export function AISettingsPanel() {
       <div className="rounded-3xl p-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center space-y-4">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-600 dark:text-indigo-400" />
         <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-          Carregando arquitetura de provedores de IA...
+          Carregando configurações de inteligência artificial...
         </p>
       </div>
     );
@@ -172,10 +175,13 @@ export function AISettingsPanel() {
         <h3 className="text-base font-bold text-rose-950 dark:text-rose-100">
           Não foi possível conectar ao subsistema de IA
         </h3>
+        <p className="text-xs text-rose-700 dark:text-rose-300">
+          Verifique se a sessão administrativa está ativa e tente novamente.
+        </p>
         <button
           type="button"
           onClick={fetchSettings}
-          className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 text-white"
+          className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 transition cursor-pointer"
         >
           Tentar novamente
         </button>
@@ -187,6 +193,19 @@ export function AISettingsPanel() {
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-200">
+      {/* Mensagem Informativa Obrigatória */}
+      <div className="rounded-2xl p-4 sm:p-5 bg-gradient-to-r from-indigo-50/90 via-violet-50/80 to-indigo-50/90 dark:from-indigo-950/60 dark:via-purple-950/40 dark:to-indigo-950/60 border border-indigo-200 dark:border-indigo-800 shadow-sm flex items-start gap-3">
+        <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="text-xs sm:text-sm font-bold text-indigo-950 dark:text-indigo-100">
+            O OpenRouter é o provider padrão. A configuração permanece ativa até que o administrador altere manualmente.
+          </p>
+          <p className="text-[11px] sm:text-xs text-indigo-800/90 dark:text-indigo-300/90 leading-relaxed">
+            As alterações realizadas neste painel são persistidas no disco e nunca sofrem fallback automático para mock ou outro provedor. Em caso de indisponibilidade, o sistema reportará o erro diretamente ao usuário.
+          </p>
+        </div>
+      </div>
+
       {/* Toast de Feedback */}
       {statusMessage && (
         <div
@@ -227,14 +246,39 @@ export function AISettingsPanel() {
               O modelo selecionado não possui suporte para imagens e não pode ler páginas de livros.
             </p>
             <p className="text-[11px] text-amber-800 dark:text-amber-300">
-              Alterne para um modelo com visão (ex.: Qwen2.5-VL, GPT-4o Mini ou Gemini 1.5 Flash) para que a leitura dos livros funcione corretamente.
+              Alterne para um modelo com visão (ex.: Google Gemini 1.5 Flash, Qwen2.5-VL ou GPT-4o Mini) para que a leitura funcione corretamente.
             </p>
           </div>
         </div>
       )}
 
       {/* Status do Modelo Ativo */}
-      <ModelStatus config={settings} />
+      <div className="space-y-2">
+        <ModelStatus config={settings} />
+
+        {/* Data ou confirmação da última alteração */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            {settings.lastUpdated ? (
+              <span>
+                Última alteração salva em:{" "}
+                <strong className="text-slate-700 dark:text-slate-300">
+                  {new Date(settings.lastUpdated).toLocaleString("pt-BR")}
+                </strong>
+                {settings.updatedBy && ` (por ${settings.updatedBy})`}
+              </span>
+            ) : (
+              <span>Configuração padrão inicial ativa (sem alterações manuais).</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+            <Shield className="w-3 h-3" />
+            <span>Persistência garantida no servidor</span>
+          </div>
+        </div>
+      </div>
 
       {/* Grid de Escolha dos Provedores */}
       <div className="space-y-3">
@@ -291,10 +335,10 @@ export function AISettingsPanel() {
       <div className="space-y-3 pt-2">
         <div>
           <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-            Parâmetros do Provedor
+            Parâmetros do Provedor Selecionado
           </h3>
           <p className="text-xs text-slate-600 dark:text-slate-400">
-            Ajuste a URL base, nome do modelo e teste a conexão antes de iniciar o estudo.
+            Ajuste a URL base, modelo e chave de API. Clique em "Salvar alterações" para persistir no servidor.
           </p>
         </div>
 

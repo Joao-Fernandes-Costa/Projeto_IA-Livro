@@ -100,6 +100,13 @@ export function ProviderCard({
               )
             )}
 
+            {id === "openrouter" && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-950/80 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
+                <Sparkles className="w-3 h-3" />
+                <span>Padrão Inicial</span>
+              </span>
+            )}
+
             {!requiresKey && id === "ollama" && (
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                 100% Local

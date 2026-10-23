@@ -1,16 +1,24 @@
 import React from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpen, Bot, Shield, Sparkles } from "lucide-react";
+import { redirect } from "next/navigation";
+import { ArrowLeft, Bot, Shield, Sparkles } from "lucide-react";
 import { AISettingsPanel } from "@/components/ai";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { HomeFooter } from "@/components/HomeFooter";
+import { requireAdminSession } from "@/lib/security/admin-auth";
 
 export const metadata = {
   title: "Configurações de IA — EstudeAI",
-  description: "Gerencie provedores de inteligência artificial (Ollama, OpenRouter, OpenAI, Gemini e Customizados) no EstudeAI.",
+  description: "Gerencie provedores de inteligência artificial (OpenRouter, Ollama, OpenAI, Gemini e Customizados) no EstudeAI.",
 };
 
-export default function AISettingsPage() {
+export default async function AISettingsPage() {
+  // Verificação estrita de sessão administrativa no servidor
+  const isAdmin = await requireAdminSession();
+  if (!isAdmin) {
+    redirect("/");
+  }
+
   return (
     <div className="min-h-screen flex flex-col justify-between bg-gradient-to-b from-[#f8faff] via-white to-[#f1f5fd] dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 transition-colors duration-200">
       {/* 1. Header de Configurações */}
@@ -33,20 +41,16 @@ export default function AISettingsPage() {
                 <Bot className="w-4 h-4" />
               </div>
               <span className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-                Configurações de IA
+                Painel Administrativo de IA
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/admin/configuracoes/ia"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition"
-              title="Painel Administrativo de Chaves"
-            >
-              <Shield className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Admin</span>
-            </Link>
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              <Shield className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Sessão Admin Ativa</span>
+            </span>
             <ThemeToggle />
           </div>
         </div>
@@ -58,7 +62,7 @@ export default function AISettingsPage() {
         <div className="space-y-1.5">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Arquitetura de Modelos Multimodais</span>
+            <span>Configurações Restritas do Administrador</span>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
@@ -66,7 +70,7 @@ export default function AISettingsPage() {
           </h1>
 
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed font-normal">
-            Escolha manualmente o provedor que será utilizado para ler as páginas dos livros e gerar os resumos, aulas e quizzes. Todas as credenciais permanecem salvas estritamente no servidor.
+            Painel exclusivo para administradores. Configure o provedor ativo, modelos multimodais e chaves de API. Todas as configurações e credenciais permanecem salvas e criptografadas estritamente no servidor.
           </p>
         </div>
 

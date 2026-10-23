@@ -81,6 +81,8 @@ export interface AIProviderDetailConfig {
 export interface AISettingsResponse extends AIConfiguration {
   providers: Record<AIProviderName, AIProviderDetailConfig>;
   tts?: import("@/lib/tts/tts-provider").TTSConfiguration;
+  lastUpdated?: string;
+  updatedBy?: string;
 }
 
 export interface AISettingsUpdateRequest {

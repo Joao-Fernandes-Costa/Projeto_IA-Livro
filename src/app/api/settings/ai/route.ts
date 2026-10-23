@@ -2,13 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { AISettingsStore } from "@/lib/ai/settings-store";
 import { validateBaseUrl } from "@/lib/ai/provider";
 import { AISettingsUpdateRequest, AIProviderName } from "@/types/ai";
+import { requireAdminSession, getAdminSessionInfo } from "@/lib/security/admin-auth";
 
 /**
  * GET /api/settings/ai
+ * Acesso exclusivo de administrador.
  * Retorna as configurações ativas e status dos provedores de forma 100% segura.
+ * Retorna HTTP 403 para usuários não autenticados como administrador.
  * NUNCA retorna o valor de nenhuma chave de API.
  */
 export async function GET() {
+  const isAuth = await requireAdminSession();
+  if (!isAuth) {
+    return NextResponse.json(
+      { error: "Acesso não autorizado. Apenas administradores podem acessar as configurações de IA." },
+      { status: 403 }
+    );
+  }
+
   try {
     const config = AISettingsStore.getConfiguration();
     return NextResponse.json(config);
@@ -23,9 +34,22 @@ export async function GET() {
 
 /**
  * PUT /api/settings/ai
- * Atualiza o provider ativo, modelo, URLs base ou credenciais de forma segura.
+ * Acesso exclusivo de administrador.
+ * Atualiza e persiste o provider ativo, modelo, URLs base ou credenciais de forma segura.
+ * Retorna HTTP 403 para usuários não autenticados como administrador.
  */
 export async function PUT(request: NextRequest) {
+  const isAuth = await requireAdminSession();
+  if (!isAuth) {
+    return NextResponse.json(
+      { error: "Acesso não autorizado. Apenas administradores podem alterar as configurações de IA." },
+      { status: 403 }
+    );
+  }
+
+  const sessionInfo = await getAdminSessionInfo();
+  const adminUser = sessionInfo?.user || "admin";
+
   try {
     const body = (await request.json()) as AISettingsUpdateRequest;
 
@@ -72,12 +96,12 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // 4. Salvar configurações no servidor
-    const updated = AISettingsStore.updateConfiguration(body);
+    // 4. Salvar e persistir configurações no servidor com auditoria
+    const updated = AISettingsStore.updateConfiguration(body, adminUser);
 
     return NextResponse.json({
       success: true,
-      message: "Configurações de IA atualizadas com sucesso.",
+      message: "Configurações de IA salvas e persistidas com sucesso.",
       data: updated,
     });
   } catch (error) {

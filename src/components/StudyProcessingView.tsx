@@ -15,6 +15,7 @@ import {
   Sparkles,
   Bot,
   Layers,
+  Shield,
 } from "lucide-react";
 import type { StudyPage } from "@/types/study";
 import type {
@@ -31,21 +32,14 @@ interface StudyProcessingViewProps {
   onCancel: () => void;
 }
 
-interface ProviderInfo {
-  activeProvider: string;
-  activeModel: string;
-  supportsVision: boolean;
-}
-
 export function StudyProcessingView({
   pages,
   studyTitle,
   onComplete,
   onCancel,
 }: StudyProcessingViewProps) {
-  const [providerInfo, setProviderInfo] = useState<ProviderInfo | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>(
-    "Verificando o provider configurado..."
+    "Iniciando leitura inteligente das páginas..."
   );
   const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
   const [completedAnalyses, setCompletedAnalyses] = useState<PageAnalysis[]>([]);
@@ -68,32 +62,6 @@ export function StudyProcessingView({
       abortControllerRef.current = abortController;
 
       try {
-        // Passo 1: Obter e validar o provedor configurado
-        setStatusMessage("Verificando o provider configurado...");
-        const settingsRes = await fetch("/api/settings/ai", {
-          signal: abortController.signal,
-        });
-
-        if (!settingsRes.ok) {
-          throw new Error("Não foi possível conectar ao subsistema de IA.");
-        }
-
-        const settingsData = await settingsRes.json();
-        const pInfo: ProviderInfo = {
-          activeProvider: settingsData.activeProvider || "mock",
-          activeModel: settingsData.activeModel || "modelo padrão",
-          supportsVision: Boolean(settingsData.supportsVision),
-        };
-        setProviderInfo(pInfo);
-
-        if (!pInfo.supportsVision) {
-          setFatalError(
-            "O modelo selecionado não possui suporte para leitura de imagens. Alterne o modelo nas configurações de IA."
-          );
-          setIsProcessing(false);
-          return;
-        }
-
         const currentAnalyses = [...existingAnalyses];
         const currentErrors = [...existingErrors];
 
@@ -125,6 +93,13 @@ export function StudyProcessingView({
               const errMessage =
                 errBody?.error?.message || `Erro HTTP ${response.status} ao processar página ${pageNumber}`;
               const errCode = errBody?.error?.code || "PAGE_ERROR";
+
+              // Erro crítico de provedor ou visão não suportada interrompe com erro fatal
+              if (response.status === 422 || response.status === 503) {
+                setFatalError(errMessage);
+                setIsProcessing(false);
+                return;
+              }
 
               // Registrar erro individual sem quebrar as outras páginas
               currentErrors.push({
@@ -251,14 +226,6 @@ export function StudyProcessingView({
             Extraindo textos, títulos, fórmulas e conceitos utilizando o modelo multimodal configurado.
           </p>
 
-          {providerInfo && (
-            <div className="flex items-center justify-center gap-2 text-xs pt-1 font-mono text-slate-500 dark:text-slate-400">
-              <Bot className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>
-                {providerInfo.activeProvider.toUpperCase()} • {providerInfo.activeModel}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Estado de Erro Fatal / Provider Indisponível */}
@@ -268,13 +235,13 @@ export function StudyProcessingView({
               <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <h4 className="text-sm font-bold text-rose-950 dark:text-rose-100">
-                  Não foi possível conectar ao modelo configurado
+                  Não foi possível conectar ao provedor de IA
                 </h4>
                 <p className="text-xs text-rose-900 dark:text-rose-300 leading-relaxed">
                   {fatalError}
                 </p>
                 <p className="text-[11px] text-rose-800 dark:text-rose-400">
-                  Verifique o provider e tente novamente nas configurações de IA.
+                  Solicite ao administrador que verifique a chave de API e o modelo ativo no painel administrativo.
                 </p>
               </div>
             </div>
@@ -299,11 +266,11 @@ export function StudyProcessingView({
               </button>
 
               <Link
-                href="/configuracoes/ia"
+                href="/admin/configuracoes/ia"
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition"
               >
-                <Settings className="w-3.5 h-3.5" />
-                <span>Ir para configurações de IA</span>
+                <Shield className="w-3.5 h-3.5" />
+                <span>Painel do Administrador</span>
               </Link>
             </div>
           </div>
